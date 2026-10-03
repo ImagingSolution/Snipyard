@@ -223,9 +223,10 @@ public static class StatusLineRelay
         {
             var path = CachePath;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var merged = KeepHigherSaved(limits, path);
             // Written aside and moved into place, so a reader never sees half a file.
             var temp = $"{path}.{Environment.ProcessId}.tmp";
-            File.WriteAllText(temp, limits.GetRawText());
+            File.WriteAllText(temp, merged);
             File.Move(temp, path, overwrite: true);
         }
         catch
@@ -233,6 +234,52 @@ public static class StatusLineRelay
             // Several sessions may refresh at once; losing one write just means the next wins.
         }
     }
+
+    private static readonly string[] WindowNames = { "five_hour", "seven_day" };
+
+    /// <summary>
+    /// The snapshot to save, with any window the saved file already shows as further spent put
+    /// back. Every session redraws its status line with the rate_limits of its own last reply, so
+    /// an idle tab would otherwise roll the readout back to an hour-old figure. Within one window
+    /// (same reset time) usage only climbs, so the higher figure is the newer one.
+    /// </summary>
+    private static string KeepHigherSaved(JsonElement limits, string path)
+    {
+        var fresh = limits.GetRawText();
+        try
+        {
+            if (!File.Exists(path)) return fresh;
+            if (JsonNode.Parse(fresh) is not JsonObject merged) return fresh;
+            if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject saved) return fresh;
+
+            bool changed = false;
+            foreach (var name in WindowNames)
+            {
+                if (merged[name] is not JsonObject now || saved[name] is not JsonObject before) continue;
+                if (ResetsAt(now) is not { } nowReset || ResetsAt(before) is not { } beforeReset) continue;
+                // Sessions may round the reset differently; a new window moves it by hours.
+                if (Math.Abs(nowReset - beforeReset) > 600) continue;
+                if (UsedPercent(before) <= UsedPercent(now)) continue;
+
+                merged[name] = before.DeepClone();
+                changed = true;
+            }
+            return changed ? merged.ToJsonString() : fresh;
+        }
+        catch
+        {
+            // An unreadable saved file is simply replaced.
+            return fresh;
+        }
+    }
+
+    private static long? ResetsAt(JsonObject window) =>
+        window["resets_at"] is JsonValue v && v.TryGetValue<long>(out var epoch) ? epoch
+        : window["resets_at"] is JsonValue d && d.TryGetValue<double>(out var real) ? (long)real
+        : null;
+
+    private static double UsedPercent(JsonObject window) =>
+        window["used_percentage"] is JsonValue v && v.TryGetValue<double>(out var pct) ? pct : 0;
 
     /// <summary>
     /// The status line the user configured, in Claude Code's own order of precedence: the
