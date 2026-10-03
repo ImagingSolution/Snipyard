@@ -24,6 +24,8 @@ public static class ChatTheme
     // Sampled from the desktop app's own dark and light themes
     public static Color Background(bool isDark) => isDark ? Color.FromRgb(21, 21, 21) : Color.FromRgb(252, 252, 251);
     public static Color UserBubble(bool isDark) => isDark ? Color.FromRgb(33, 33, 33) : Color.FromRgb(240, 240, 239);
+    /// <summary>The user's own messages: the same light blue as the selected MDI tab.</summary>
+    public static Color UserMessage => Color.FromArgb(30, 0, 122, 255);
     public static Color Surface(bool isDark) => isDark ? Color.FromRgb(32, 32, 31) : Color.FromRgb(255, 255, 255);
     public static Color Outline(bool isDark) => isDark ? Color.FromRgb(55, 55, 54) : Color.FromRgb(223, 223, 222);
     public static Color Hover(bool isDark) => isDark ? Color.FromRgb(40, 40, 40) : Color.FromRgb(240, 240, 239);
@@ -1124,7 +1126,7 @@ public class DocumentViewPanel : Panel
         {
             var bubble = new Border
             {
-                Background = Brush(ChatTheme.UserBubble(_isDark)),
+                Background = Brush(ChatTheme.UserMessage),
                 CornerRadius = new CornerRadius(14),
                 Padding = new Thickness(14, 9),
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -1814,7 +1816,7 @@ public class DocumentViewPanel : Panel
             {
                 container.Children.Add(new Border
                 {
-                    Background = Brush(ChatTheme.UserBubble(_isDark)),
+                    Background = Brush(ChatTheme.UserMessage),
                     CornerRadius = new CornerRadius(14),
                     Padding = new Thickness(14, 9),
                     HorizontalAlignment = HorizontalAlignment.Right,
