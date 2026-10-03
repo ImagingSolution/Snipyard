@@ -4316,6 +4316,11 @@ public partial class TerminalControl : Control, IDisposable
         // The terminal view shows the CLI's own prompt, answerable from the keyboard; the card is
         // for the chat view, which hides the terminal
         var prompt = _isDocumentView ? ReadChoicePrompt() : null;
+        // Claude Code 2.1.28x can hold the AskUserQuestion call back from the transcript until
+        // it is answered, which leaves the chat view with no question card while the CLI waits.
+        // The card is then read off the screen instead.
+        if (prompt == null && _isDocumentView && _docViewPanel is { HasOpenAskCard: false })
+            prompt = ReadAskPrompt();
 
         // Rebuilt only when the prompt itself changes, not on every caret move. A card that was
         // just answered stays down until its prompt leaves the screen, rather than popping back up
@@ -4330,9 +4335,11 @@ public partial class TerminalControl : Control, IDisposable
 
     private string? _choiceSignature;
 
-    private enum ChoiceKind { Permission, Plan, Menu }
+    private enum ChoiceKind { Permission, Plan, Menu, Ask }
 
-    private sealed record ChoiceOption(int Number, string Label, bool TakesText);
+    /// <param name="Detail">The description rows under an AskUserQuestion option.</param>
+    /// <param name="Toggles">A multi-select option: its digit ticks it rather than picking it.</param>
+    private sealed record ChoiceOption(int Number, string Label, bool TakesText, string? Detail = null, bool Toggles = false);
 
     /// <param name="Context">The prompt's rows above its options - the command or file being
     /// asked about - so two prompts with the same question still read as different ones.</param>
@@ -4436,6 +4443,69 @@ public partial class TerminalControl : Control, IDisposable
         return new ChoicePrompt(kind, title, string.Join("\n", context), options, caret, footer);
     }
 
+    /// <summary>
+    /// Reads the page of the AskUserQuestion selector on screen (see <see cref="IsAskSelectorOnScreen"/>),
+    /// Claude Code 2.1.286: an optional tab row ("← [ ] Q1 [ ] Q2 √ Submit →"), the question, the
+    /// numbered options each followed by its description row, "Type something.", a rule,
+    /// "Chat about this", then the key hints. The review page lists "Submit answers" / "Cancel".
+    /// "Chat about this" is left out: picking it abandons the whole selector.
+    /// </summary>
+    private ChoicePrompt? ReadAskPrompt()
+    {
+        if (!IsAskSelectorOnScreen()) return null;
+        int totalRows = _buffer.Scrollback.Count + _buffer.Rows;
+        var rows = new List<string>();
+        for (int i = Math.Max(0, totalRows - 40); i < totalRows; i++)
+            rows.Add(GetRowText(i).TrimEnd());
+
+        int last = -1;
+        for (int i = rows.Count - 1; i >= 0 && last < 0; i--)
+            if (ChoiceRowRegex.IsMatch(rows[i])) last = i;
+        if (last < 0) return null;
+
+        // Walk up through consecutive numbers; the rows between two options are the upper one's
+        // description (and the rule above "Chat about this")
+        var options = new List<ChoiceOption>();
+        var detail = new List<string>();
+        int caret = -1, firstRow = last, gap = 0;
+        for (int i = last; i >= 0; i--)
+        {
+            var m = ChoiceRowRegex.Match(rows[i]);
+            int n = m.Success ? int.Parse(m.Groups["n"].Value) : -1;
+            if (m.Success && (options.Count == 0 || n == options[^1].Number - 1))
+            {
+                var label = m.Groups["label"].Value.Trim();
+                var text = detail.Count > 0 ? string.Join(" ", detail) : null;
+                detail.Clear();
+                options.Add(new ChoiceOption(n, label, label.TrimStart('[', ' ', 'x', 'X', '✓', '√', ']').StartsWith("Type something"), text,
+                    System.Text.RegularExpressions.Regex.IsMatch(label, @"^\[.\]")));
+                if (m.Groups["caret"].Success) caret = n;
+                firstRow = i;
+                gap = 0;
+            }
+            else if (!m.Success && ++gap <= 4)
+            {
+                var t = rows[i].Trim(' ', '│', '|');
+                if (t.Length > 0 && !t.All(c => c is '─' or '━' or '-' or '╌')) detail.Insert(0, t);
+            }
+            else break;
+        }
+        options.Reverse();
+        options.RemoveAll(o => o.Label.StartsWith("Chat about this"));
+        if (options.Count == 0) return null;
+
+        // The question and the tab row above the options, up to the rule that opens the selector
+        var context = new List<string>();
+        for (int i = firstRow - 1; i >= 0 && context.Count < 8; i--)
+        {
+            var t = rows[i].Trim(' ', '│', '|');
+            if (t.Length > 0 && t.All(c => c is '─' or '━' or '▔' or '-' or '╭' or '╮' or '╌')) break;
+            if (t.Length > 0) context.Insert(0, t);
+        }
+        var title = context.LastOrDefault(t => !t.StartsWith('←') && !t.EndsWith('→')) ?? "";
+        return new ChoicePrompt(ChoiceKind.Ask, title, string.Join("\n", context), options, caret, null);
+    }
+
     /// <summary>Grabs the text of the permission prompt so it can be explained in plain words.</summary>
     private string ReadPermissionPromptText()
     {
@@ -4457,8 +4527,16 @@ public partial class TerminalControl : Control, IDisposable
     private async void ChooseOption(ChoicePrompt prompt, ChoiceOption option, string? text)
     {
         HidePermissionOverlay();
-        var now = ReadChoicePrompt();
+        var now = prompt.Kind == ChoiceKind.Ask ? ReadAskPrompt() : ReadChoicePrompt();
         if (now == null || now.Signature != prompt.Signature) return;
+
+        // A multi-select option is ticked by its digit and the page stays put
+        if (option.Toggles)
+        {
+            _pty?.WriteInput(option.Number.ToString());
+            return;
+        }
+        if (now.CaretNumber < 0) return;
 
         int delta = option.Number - now.CaretNumber;
         var arrow = delta > 0 ? "\x1b[B" : "\x1b[A";
@@ -4604,7 +4682,90 @@ public partial class TerminalControl : Control, IDisposable
             }
         }
 
-        if (prompt.Kind == ChoiceKind.Menu)
+        if (prompt.Kind == ChoiceKind.Ask)
+        {
+            // The tab row tells which question of several this page is
+            var tabs = prompt.Context.Split('\n').FirstOrDefault(t => t.StartsWith('←') || t.EndsWith('→'));
+            if (tabs != null)
+            {
+                content.Children.Insert(0, new TextBlock
+                {
+                    Text = tabs,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = secondary,
+                    Margin = new Thickness(0, 0, 0, 4),
+                });
+            }
+
+            ChoiceOption? textOption = null;
+            bool toggles = false;
+            foreach (var o in prompt.Options)
+            {
+                if (o.TakesText) { textOption = o; continue; }
+                toggles |= o.Toggles;
+                var label = new StackPanel();
+                label.Children.Add(new TextBlock { Text = $"{o.Number}. {o.Label}", TextWrapping = TextWrapping.Wrap });
+                if (o.Detail != null)
+                    label.Children.Add(new TextBlock { Text = o.Detail, FontSize = 11, TextWrapping = TextWrapping.Wrap, Opacity = 0.75 });
+                var btn = MakeChoiceButton("", o.Label, null, true);
+                btn.Content = label;
+                btn.Click += (_, _) => ChooseOption(prompt, o, null);
+                content.Children.Add(btn);
+            }
+
+            if (textOption != null)
+            {
+                var box = new TextBox
+                {
+                    Watermark = Services.Loc.Get("AskTypeSomething", "Or type your own answer"),
+                    AcceptsReturn = false,
+                    TextWrapping = TextWrapping.Wrap,
+                    MinWidth = 320,
+                    MaxWidth = 440,
+                };
+                var send = MakeChoiceButton(Services.Loc.Get("PlanSendFeedback", "Send"), textOption.Label, null, false);
+                void SendText()
+                {
+                    var text = box.Text?.Trim();
+                    if (!string.IsNullOrEmpty(text)) ChooseOption(prompt, textOption, text);
+                }
+                send.Click += (_, _) => SendText();
+                box.KeyDown += (_, ke) =>
+                {
+                    if (ke.Key == Key.Enter) { ke.Handled = true; SendText(); }
+                };
+                var row = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Margin = new Thickness(0, 8, 0, 0),
+                };
+                row.Children.Add(box);
+                row.Children.Add(send);
+                content.Children.Add(row);
+            }
+
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 10, 0, 0),
+            };
+            // Multi-select pages are left with Right once the ticks are in; so is a question
+            // skipped among several
+            if (toggles || tabs != null)
+            {
+                var next = MakeChoiceButton(Services.Loc.Get("AskNextQuestion", "Next →"), "→", Color.FromRgb(0, 122, 255), false);
+                next.Click += (_, _) => { HidePermissionOverlay(); _choiceSignature = null; _pty?.WriteInput("\x1b[C"); };
+                actions.Children.Add(next);
+            }
+            var cancelAsk = MakeChoiceButton(Services.Loc.Get("MenuCancel", "Cancel (Esc)"), "Esc", null, false);
+            cancelAsk.Click += (_, _) => { HidePermissionOverlay(); _pty?.WriteInput("\x1b"); };
+            actions.Children.Add(cancelAsk);
+            content.Children.Add(actions);
+        }
+        else if (prompt.Kind == ChoiceKind.Menu)
         {
             // A menu can run to a dozen names: one per row, the current pick marked, scrolling
             // past a screenful

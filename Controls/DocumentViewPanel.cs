@@ -451,6 +451,13 @@ public class DocumentViewPanel : Panel
     /// <summary>Whether a just-sent prompt is still waiting to show up in the transcript.</summary>
     public bool HasPendingPrompt => _pendingView != null;
 
+    /// <summary>
+    /// Whether the transcript shows a question still waiting on an answer. The CLI may hold the
+    /// question back from the transcript until it is answered, so the selector can be on screen
+    /// while this is false.
+    /// </summary>
+    public bool HasOpenAskCard => _shownMessages.Any(m => m.PendingAskId != null);
+
     /// <summary>Shows the prompts waiting for the turn to end, as chips under the transcript.</summary>
     public void SetQueue(IReadOnlyList<string> items)
     {

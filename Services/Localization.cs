@@ -324,6 +324,8 @@ public static class Loc
         ["PlanFeedbackHint"] = new() { ["English"] = "Or tell Claude what to change", ["日本語"] = "または、変更してほしい点を入力" },
         ["PlanSendFeedback"] = new() { ["English"] = "Send", ["日本語"] = "送信" },
         ["MenuCancel"] = new() { ["English"] = "Cancel (Esc)", ["日本語"] = "キャンセル (Esc)" },
+        ["AskTypeSomething"] = new() { ["English"] = "Or type your own answer", ["日本語"] = "または回答を入力" },
+        ["AskNextQuestion"] = new() { ["English"] = "Next →", ["日本語"] = "次へ →" },
         ["ToggleDocView"] = new() { ["English"] = "Toggle Chat View", ["日本語"] = "チャットビュー切替" },
 
         // ── AI Provider ──
