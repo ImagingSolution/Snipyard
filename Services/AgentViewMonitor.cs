@@ -135,14 +135,18 @@ public static class AgentViewMonitor
     }
 
     private static string JobsRoot =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".claude", "jobs");
+        Path.Combine(ClaudeHome, "jobs");
 
     private static string RosterFile =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".claude", "daemon", "roster.json");
+        Path.Combine(ClaudeHome, "daemon", "roster.json");
+
+    // A debug build can be pointed at a made-up ~/.claude to show sample sessions: faking them
+    // in the real jobs folder would put them in front of the CLI's own supervisor
+    private static string ClaudeHome =>
+#if DEBUG
+        Environment.GetEnvironmentVariable("SNIPYARD_TEST_CLAUDE_HOME") is { Length: > 0 } fake ? fake :
+#endif
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
 
     private static List<BackgroundAgent> Snapshot()
     {

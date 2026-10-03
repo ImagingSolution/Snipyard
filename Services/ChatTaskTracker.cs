@@ -12,11 +12,8 @@ public enum ChatTaskStatus { Pending, InProgress, Completed }
 /// <summary>One entry of Claude's task list, as it stands after the last task tool call.</summary>
 public record ChatTask(string Id, string Subject, string? ActiveForm, ChatTaskStatus Status);
 
-/// <summary>A subagent started by an Agent call, and where its own transcript is if one was written.</summary>
-public record SubagentInfo(string ToolUseId, string AgentType, string Description, string? TranscriptPath, bool Running);
-
 /// <summary>
-/// Rebuilds the task list and the subagent list from a session's tool calls. The CLI keeps no
+/// Rebuilds the task list from a session's tool calls. The CLI keeps no
 /// task file: older versions log TodoWrite with the whole list each time, newer ones log
 /// TaskCreate / TaskUpdate as increments, so the state is replayed call by call.
 /// </summary>
@@ -94,42 +91,32 @@ public static class ChatTaskTracker
         return tasks;
     }
 
-    /// <summary>
-    /// Every Agent call in the session, matched to its transcript under
-    /// &lt;session&gt;/subagents/ by the tool_use id the meta file records.
-    /// </summary>
-    public static List<SubagentInfo> ExtractSubagents(string sessionPath, IEnumerable<ConversationMessage> messages)
+    /// <summary>The transcript the subagent started by this Agent call wrote, if any.</summary>
+    public static string? TranscriptFor(string sessionPath, string toolUseId) =>
+        ReadTranscriptIndex(sessionPath).GetValueOrDefault(toolUseId);
+
+    /// <summary>"type — description" for an Agent call, as the subagent's title.</summary>
+    public static string AgentLabel(ToolCall call)
     {
-        var result = new List<SubagentInfo>();
-        Dictionary<string, string>? transcripts = null;
-        foreach (var call in AllCalls(messages))
+        string type = "", desc = "";
+        if (call.InputJson != null)
         {
-            if (call.Name is not ("Agent" or "Task") || call.Id == null) continue;
-            string type = "", desc = "";
-            if (call.InputJson != null)
+            try
             {
-                try
-                {
-                    using var doc = JsonDocument.Parse(call.InputJson);
-                    if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                    {
-                        type = Str(doc.RootElement, "subagent_type") ?? "";
-                        desc = Str(doc.RootElement, "description") ?? "";
-                    }
-                }
-                catch (JsonException) { }
+                using var doc = JsonDocument.Parse(call.InputJson);
+                type = Str(doc.RootElement, "subagent_type") ?? "";
+                desc = Str(doc.RootElement, "description") ?? "";
             }
-            transcripts ??= ReadTranscriptIndex(sessionPath);
-            transcripts.TryGetValue(call.Id, out var path);
-            result.Add(new SubagentInfo(call.Id, string.IsNullOrEmpty(type) ? "general-purpose" : type,
-                desc, path, call.Result == null));
+            catch (JsonException) { }
         }
-        return result;
+        if (type.Length == 0) type = "general-purpose";
+        return desc.Length == 0 ? type : $"{type} — {desc}";
     }
 
-    private static Dictionary<string, string> ReadTranscriptIndex(string sessionPath)
+    /// <summary>tool_use id → the transcript its meta file points at, null if not written yet.</summary>
+    private static Dictionary<string, string?> ReadTranscriptIndex(string sessionPath)
     {
-        var map = new Dictionary<string, string>();
+        var map = new Dictionary<string, string?>();
         try
         {
             var dir = Path.Combine(Path.GetDirectoryName(sessionPath) ?? "",
@@ -141,8 +128,11 @@ public static class ChatTaskTracker
                 {
                     using var doc = JsonDocument.Parse(File.ReadAllText(meta));
                     if (Str(doc.RootElement, "toolUseId") is not string id) continue;
-                    var jsonl = meta[..^".meta.json".Length] + ".jsonl";
-                    if (File.Exists(jsonl)) map[id] = jsonl;
+                    var stem = meta[..^".meta.json".Length];
+                    var name = Path.GetFileName(stem);
+                    if (!name.StartsWith("agent-", StringComparison.Ordinal)) continue;
+                    var jsonl = stem + ".jsonl";
+                    map[id] = File.Exists(jsonl) ? jsonl : null;
                 }
                 catch { }
             }

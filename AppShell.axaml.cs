@@ -389,6 +389,8 @@ internal partial class AppShell : UserControl, IDockOwner
         _primary = primary;
         InitializeComponent();
         Shells.Add(this);
+        // The chat view's background list names sessions the way the windows panel does
+        Controls.DocumentViewPanel.BackgroundAgentName ??= AgentDisplayName;
 
         _settings = AppSettings.Shared;
         _snippetStore = SnippetStore.Shared;
@@ -821,6 +823,10 @@ internal partial class AppShell : UserControl, IDockOwner
 
         // Activity bar — hide what this CLI does not implement
         BtnActivityDocView.IsVisible = features.ChatView;
+        // With no window open the button stands for the mode the next session opens in,
+        // carried over from the last run
+        if (_activeChildIndex < 0 || _activeChildIndex >= _children.Count)
+            SetActivityButtonActive(BtnActivityDocView, _settings.LastChatView);
         // BtnActivityDiagram stays hidden: diagram detection scrapes Claude Code's
         // terminal output, which breaks whenever Claude changes its renderer. The
         // handler and inline rendering are still live — restore this line and drop
@@ -1102,7 +1108,14 @@ internal partial class AppShell : UserControl, IDockOwner
 
     private void OnActivityDocView(object? sender, RoutedEventArgs e)
     {
-        if (_activeChildIndex < 0 || _activeChildIndex >= _children.Count) return;
+        if (_activeChildIndex < 0 || _activeChildIndex >= _children.Count)
+        {
+            // No window to switch: the button just picks how the next session opens
+            _settings.LastChatView = !_settings.LastChatView;
+            _settings.Save();
+            SetActivityButtonActive(BtnActivityDocView, _settings.LastChatView);
+            return;
+        }
         var child = _children[_activeChildIndex];
         var terminal = child.Terminal;
         if (child.Target?.Kind == ExecutionKind.Ssh && !terminal.IsDocumentView)

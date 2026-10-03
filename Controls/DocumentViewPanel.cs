@@ -24,8 +24,8 @@ public static class ChatTheme
     // Sampled from the desktop app's own dark and light themes
     public static Color Background(bool isDark) => isDark ? Color.FromRgb(21, 21, 21) : Color.FromRgb(252, 252, 251);
     public static Color UserBubble(bool isDark) => isDark ? Color.FromRgb(33, 33, 33) : Color.FromRgb(240, 240, 239);
-    /// <summary>The user's own messages: the same light blue as the selected MDI tab.</summary>
-    public static Color UserMessage => Color.FromArgb(30, 0, 122, 255);
+    /// <summary>The user's own messages: a pale tab blue in light, a half-strength New Session blue in dark.</summary>
+    public static Color UserMessage(bool isDark) => isDark ? Color.FromArgb(120, 0, 122, 255) : Color.FromArgb(20, 0, 122, 255);
     public static Color Surface(bool isDark) => isDark ? Color.FromRgb(32, 32, 31) : Color.FromRgb(255, 255, 255);
     public static Color Outline(bool isDark) => isDark ? Color.FromRgb(55, 55, 54) : Color.FromRgb(223, 223, 222);
     public static Color Hover(bool isDark) => isDark ? Color.FromRgb(40, 40, 40) : Color.FromRgb(240, 240, 239);
@@ -120,10 +120,22 @@ public class DocumentViewPanel : Panel
     private readonly StackPanel _extrasPanel;
     private string _extrasKey = "";
     private bool _tasksExpanded = true;
-    private bool _agentsExpanded;
     // The subagent transcript on screen in place of the session, or null for the session itself
     private string? _agentPath;
     private string _agentTitle = "";
+
+    // The CLI's agent view - background sessions running in this folder - pinned above the input,
+    // where the terminal shows its own background work
+    private readonly Border _backgroundBar;
+    private readonly StackPanel _backgroundList;
+    private string _backgroundKey = "";
+    private readonly List<(TextBlock Clock, DateTime Started)> _backgroundClocks = new();
+
+    /// <summary>The folder the session runs in; background sessions are matched against it.</summary>
+    public string? ProjectFolder { get; set; }
+
+    /// <summary>What to call a background session, so a rename made in the windows panel shows here too.</summary>
+    public static Func<BackgroundAgent, string>? BackgroundAgentName { get; set; }
 
     // Find bar (Ctrl+F): matches are message indices, boxed on a layer over the transcript
     private readonly Panel _scrollContent;
@@ -227,6 +239,22 @@ public class DocumentViewPanel : Panel
         _scrollViewer.ScrollChanged += OnScrollChanged;
         Children.Add(_scrollViewer);
         ChatSelection.Attach(_messagesStack, _scrollViewer);
+
+        _backgroundList = new StackPanel { Spacing = 2, Margin = new Thickness(0, 0, 14, 0) };
+        _backgroundBar = new Border
+        {
+            Padding = new Thickness(16, 6, 16, 6),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            IsVisible = false,
+            Child = new ScrollViewer
+            {
+                MaxHeight = 220,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                Content = _backgroundList,
+            },
+        };
+        Children.Add(_backgroundBar);
 
         // Round "jump to latest" button, shown once the reader has scrolled away from the end
         _scrollDownButton = new Button
@@ -333,7 +361,9 @@ public class DocumentViewPanel : Panel
     {
         _header.Measure(new Size(availableSize.Width, double.PositiveInfinity));
         double headerH = _header.DesiredSize.Height;
-        _scrollViewer.Measure(new Size(availableSize.Width, Math.Max(0, availableSize.Height - headerH)));
+        _backgroundBar.Measure(new Size(availableSize.Width, double.PositiveInfinity));
+        double barH = _backgroundBar.IsVisible ? _backgroundBar.DesiredSize.Height : 0;
+        _scrollViewer.Measure(new Size(availableSize.Width, Math.Max(0, availableSize.Height - headerH - barH)));
         _scrollDownButton.Measure(new Size(32, 32));
         _searchBar.Measure(availableSize);
         return availableSize;
@@ -343,10 +373,12 @@ public class DocumentViewPanel : Panel
     {
         double headerH = _header.DesiredSize.Height;
         _header.Arrange(new Rect(0, 0, finalSize.Width, headerH));
-        double scrollH = Math.Max(0, finalSize.Height - headerH);
+        double barH = _backgroundBar.IsVisible ? _backgroundBar.DesiredSize.Height : 0;
+        double scrollH = Math.Max(0, finalSize.Height - headerH - barH);
         _scrollViewer.MaxHeight = scrollH;
         _scrollViewer.Arrange(new Rect(0, headerH, finalSize.Width, scrollH));
-        _scrollDownButton.Arrange(new Rect((finalSize.Width - 32) / 2, finalSize.Height - 32 - 12, 32, 32));
+        _backgroundBar.Arrange(new Rect(0, headerH + scrollH, finalSize.Width, barH));
+        _scrollDownButton.Arrange(new Rect((finalSize.Width - 32) / 2, headerH + scrollH - 32 - 12, 32, 32));
         var sb = _searchBar.DesiredSize;
         _searchBar.Arrange(new Rect(Math.Max(0, finalSize.Width - sb.Width - 24), headerH + 8, sb.Width, sb.Height));
         return finalSize;
@@ -580,7 +612,11 @@ public class DocumentViewPanel : Panel
         DispatcherTimer.RunOnce(() => _messagesStack.Children.Remove(line), TimeSpan.FromSeconds(6));
     }
 
-    public void StartPolling() => _pollTimer.Start();
+    public void StartPolling()
+    {
+        UpdateBackgroundAgents();
+        _pollTimer.Start();
+    }
 
     public void StopPolling() => _pollTimer.Stop();
 
@@ -630,6 +666,7 @@ public class DocumentViewPanel : Panel
 
     private void OnPollTick(object? sender, EventArgs e)
     {
+        UpdateBackgroundAgents();
         var path = _agentPath ?? _currentSessionPath;
         if (string.IsNullOrEmpty(path)) return;
         if (!System.IO.File.Exists(path)) return;
@@ -888,16 +925,11 @@ public class DocumentViewPanel : Panel
     private void UpdateExtras(List<ConversationMessage> messages)
     {
         List<ChatTask> tasks = new();
-        List<SubagentInfo> agents = new();
         if (_agentPath == null && _currentSessionPath != null)
-        {
             tasks = ChatTaskTracker.ExtractTasks(messages);
-            agents = ChatTaskTracker.ExtractSubagents(_currentSessionPath, messages);
-        }
         var key = string.Join("\u001E",
-            _isDark, _baseFontSize, _agentPath, _agentTitle, _tasksExpanded, _agentsExpanded,
-            string.Join("\u001F", tasks.Select(t => $"{t.Id}|{t.Status}|{t.Subject}|{t.ActiveForm}")),
-            string.Join("\u001F", agents.Select(a => $"{a.ToolUseId}|{a.Running}|{a.TranscriptPath != null}|{a.Description}")));
+            _isDark, _baseFontSize, _agentPath, _agentTitle, _tasksExpanded,
+            string.Join("\u001F", tasks.Select(t => $"{t.Id}|{t.Status}|{t.Subject}|{t.ActiveForm}")));
         if (key == _extrasKey) return;
         _extrasKey = key;
         _extrasPanel.Children.Clear();
@@ -928,14 +960,13 @@ public class DocumentViewPanel : Panel
             });
             return;
         }
-        if (tasks.Count == 0 && agents.Count == 0) return;
+        if (tasks.Count == 0) return;
 
         var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
         _extrasPanel.Children.Add(toggles);
 
-        if (tasks.Count > 0)
         {
-            int done = tasks.Count(t => t.Status == ChatTaskStatus.Completed);
+            int done =tasks.Count(t => t.Status == ChatTaskStatus.Completed);
             var toggle = FlatButton((_tasksExpanded ? "▾ " : "▸ ")
                 + string.Format(Loc.Get("ChatTasks"), done, tasks.Count), size, pal.Fg);
             toggle.Click += (_, _) => { _tasksExpanded = !_tasksExpanded; UpdateExtras(messages); };
@@ -954,15 +985,7 @@ public class DocumentViewPanel : Panel
                     MaxWidth = 600,
                 });
         }
-        if (agents.Count > 0)
-        {
-            var toggle = FlatButton((_agentsExpanded ? "▾ " : "▸ ")
-                + string.Format(Loc.Get("ChatSubagents"), agents.Count), size, pal.Fg);
-            toggle.Click += (_, _) => { _agentsExpanded = !_agentsExpanded; UpdateExtras(messages); };
-            toggles.Children.Add(toggle);
-        }
-
-        if (tasks.Count > 0 && _tasksExpanded)
+        if (_tasksExpanded)
         {
             var list = new StackPanel { Spacing = 2, Margin = new Thickness(14, 0, 0, 2) };
             foreach (var t in tasks)
@@ -991,41 +1014,6 @@ public class DocumentViewPanel : Panel
                         },
                     },
                 });
-            }
-            _extrasPanel.Children.Add(list);
-        }
-
-        if (agents.Count > 0 && _agentsExpanded)
-        {
-            var list = new StackPanel { Spacing = 0, Margin = new Thickness(14, 0, 0, 2) };
-            foreach (var a in agents)
-            {
-                var label = string.IsNullOrEmpty(a.Description) ? a.AgentType : $"{a.AgentType} — {a.Description}";
-                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                row.Children.Add(new TextBlock
-                {
-                    Text = a.Running ? "●" : "✓",
-                    FontSize = size,
-                    Foreground = Brush(a.Running ? AccentColor : DoneColor),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Width = 14,
-                });
-                var open = FlatButton(label, size, a.TranscriptPath != null ? pal.Fg : pal.Dim);
-                open.IsEnabled = a.TranscriptPath != null;
-                ToolTip.SetTip(open, Loc.Get(a.TranscriptPath != null ? "ChatSubagentOpen" : "ChatSubagentNoTranscript"));
-                ToolTip.SetShowOnDisabled(open, true);
-                var path = a.TranscriptPath;
-                open.Click += (_, _) => { if (path != null) ShowAgent(path, label); };
-                row.Children.Add(open);
-                if (a.Running)
-                    row.Children.Add(new TextBlock
-                    {
-                        Text = Loc.Get("ChatSubagentRunning"),
-                        FontSize = size * 0.9,
-                        Foreground = Brush(AccentColor),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    });
-                list.Children.Add(row);
             }
             _extrasPanel.Children.Add(list);
         }
@@ -1082,7 +1070,191 @@ public class DocumentViewPanel : Panel
             Height = 6,
             Stretch = Stretch.Uniform,
         };
+        _backgroundBar.Background = Brush(ChatTheme.Background(_isDark));
+        _backgroundBar.BorderBrush = Brush(pal.Border);
         RebuildQueueView();
+        _backgroundKey = "";
+        UpdateBackgroundAgents();
+    }
+
+    /// <summary>
+    /// Lists what is working behind the prompt above the input: the live background sessions of
+    /// this folder, then the subagents this session still has running - the same rows the
+    /// windows panel puts under the window. Hidden when there are none.
+    /// </summary>
+    private void UpdateBackgroundAgents()
+    {
+        var agents = AgentViewMonitor.ReadActive(ProjectFolder);
+        var subagents = SubagentMonitor.ReadRunning(_currentSessionPath);
+        var subagentDir = _currentSessionPath == null ? null
+            : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_currentSessionPath) ?? "",
+                System.IO.Path.GetFileNameWithoutExtension(_currentSessionPath), "subagents");
+        string? TranscriptOf(SubagentRun s)
+        {
+            if (subagentDir == null) return null;
+            var path = System.IO.Path.Combine(subagentDir, "agent-" + s.Id + ".jsonl");
+            return System.IO.File.Exists(path) ? path : null;
+        }
+        string Name(BackgroundAgent a) => BackgroundAgentName?.Invoke(a) ?? a.Name;
+        static string Elapsed(DateTime started)
+        {
+            var span = DateTime.Now - started;
+            if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+            return span.TotalHours >= 1 ? (int)span.TotalHours + "h" + span.Minutes + "m"
+                : span.TotalMinutes >= 1 ? span.Minutes + "m" + span.Seconds + "s"
+                : span.Seconds + "s";
+        }
+
+        var key = string.Join("\u001E", _isDark, _baseFontSize,
+            string.Join("\u001F", agents.Select(a =>
+                $"{a.Id}|{a.State}|{a.ProcessAlive}|{Name(a)}|{a.Detail}|{a.Started.Ticks}")),
+            string.Join("\u001F", subagents.Select(s =>
+                $"{s.Id}|{s.AgentType}|{s.Label}|{s.Model}|{s.Started.Ticks}|{TranscriptOf(s) != null}")));
+        // The clocks tick in place: rebuilding the rows every second would drop a hovered tooltip
+        if (key == _backgroundKey)
+        {
+            foreach (var (clock, started) in _backgroundClocks)
+                clock.Text = Elapsed(started);
+            return;
+        }
+        _backgroundKey = key;
+        _backgroundList.Children.Clear();
+        _backgroundClocks.Clear();
+
+        bool wasVisible = _backgroundBar.IsVisible;
+        _backgroundBar.IsVisible = agents.Count + subagents.Count > 0;
+        var pal = Palette;
+        double size = _baseFontSize * 0.85;
+        TextBlock SectionTitle(string text) => new()
+        {
+            Text = text,
+            FontSize = size * 0.9,
+            Foreground = Brush(pal.Dim),
+        };
+        TextBlock Clock(DateTime started)
+        {
+            var clock = new TextBlock
+            {
+                Text = Elapsed(started),
+                FontSize = size * 0.9,
+                Foreground = Brush(pal.Dim),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0),
+            };
+            _backgroundClocks.Add((clock, started));
+            return clock;
+        }
+        if (agents.Count > 0)
+        {
+            _backgroundList.Children.Add(SectionTitle(string.Format(Loc.Get("ChatBackgroundAgents"), agents.Count)));
+            foreach (var a in agents)
+            {
+                bool blocked = string.Equals(a.State, "blocked", StringComparison.OrdinalIgnoreCase);
+                // The windows panel's reading: orange mid-turn, yellow waiting on the user,
+                // hollow when no process is behind the session right now
+                var color = blocked ? Color.FromRgb(255, 214, 10) : Color.FromRgb(255, 159, 10);
+                var dot = new Avalonia.Controls.Shapes.Ellipse
+                {
+                    Width = 7,
+                    Height = 7,
+                    Fill = a.ProcessAlive ? Brush(color) : null,
+                    Stroke = a.ProcessAlive ? null : Brush(color),
+                    StrokeThickness = 1,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(2, 0, 8, 0),
+                };
+                var name = new TextBlock
+                {
+                    Text = Name(a),
+                    FontSize = size,
+                    Foreground = Brush(pal.Fg),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var detail = new TextBlock
+                {
+                    Text = blocked ? Loc.Get("AgentStateBlocked") : a.Detail ?? "",
+                    FontSize = size * 0.95,
+                    Foreground = Brush(blocked ? color : pal.Dim),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0),
+                };
+                var elapsed = Clock(a.Started);
+                // The name keeps up to half the row; the summary takes what is left
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto") };
+                name.MaxWidth = 360;
+                Grid.SetColumn(name, 1);
+                Grid.SetColumn(detail, 2);
+                Grid.SetColumn(elapsed, 3);
+                row.Children.Add(dot);
+                row.Children.Add(name);
+                row.Children.Add(detail);
+                row.Children.Add(elapsed);
+
+                var tip = Name(a) + Environment.NewLine
+                    + Loc.Get(blocked ? "AgentStateBlocked" : "AgentStateWorking") + "  ·  " + a.Id;
+                if (!string.IsNullOrEmpty(a.Detail)) tip += Environment.NewLine + a.Detail;
+                if (!string.IsNullOrEmpty(a.Intent) && a.Intent != a.Name)
+                    tip += Environment.NewLine + Environment.NewLine + a.Intent;
+                ToolTip.SetTip(row, tip);
+                _backgroundList.Children.Add(row);
+            }
+        }
+        if (subagents.Count > 0)
+        {
+            if (agents.Count > 0) _backgroundList.Children.Last().Margin = new Thickness(0, 0, 0, 4);
+            _backgroundList.Children.Add(SectionTitle(string.Format(Loc.Get("ChatSubagents"), subagents.Count)));
+            foreach (var s in subagents)
+            {
+                var type = string.IsNullOrEmpty(s.AgentType) ? "general-purpose" : s.AgentType;
+                var label = s.Label == s.Id ? type : $"{type} — {s.Label}";
+                var transcript = TranscriptOf(s);
+                bool canOpen = transcript != null;
+
+                var dot = new Avalonia.Controls.Shapes.Ellipse
+                {
+                    Width = 7,
+                    Height = 7,
+                    Fill = Brush(AccentColor),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(2 + (s.Depth - 1) * 12, 0, 8, 0),
+                };
+                // Clicking opens its transcript in place, as the header's list does
+                var name = FlatButton(label, size, canOpen ? pal.Fg : pal.Dim);
+                name.IsEnabled = canOpen;
+                name.MaxWidth = 480;
+                name.MinHeight = 0;
+                name.Padding = new Thickness(0);
+                name.VerticalAlignment = VerticalAlignment.Center;
+                if (canOpen) name.Click += (_, _) => ShowAgent(transcript, label);
+                var state = new TextBlock
+                {
+                    Text = Loc.Get("ChatSubagentRunning"),
+                    FontSize = size * 0.9,
+                    Foreground = Brush(AccentColor),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0),
+                };
+                var elapsed = Clock(s.Started);
+
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto") };
+                Grid.SetColumn(name, 1);
+                Grid.SetColumn(state, 2);
+                Grid.SetColumn(elapsed, 3);
+                row.Children.Add(dot);
+                row.Children.Add(name);
+                row.Children.Add(state);
+                row.Children.Add(elapsed);
+
+                var tip = label + Environment.NewLine
+                    + Loc.Get(canOpen ? "ChatSubagentOpen" : "ChatSubagentNoTranscript");
+                if (!string.IsNullOrEmpty(s.Model)) tip += Environment.NewLine + s.Model;
+                ToolTip.SetTip(row, tip);
+                _backgroundList.Children.Add(row);
+            }
+        }
+        if (wasVisible != _backgroundBar.IsVisible) InvalidateMeasure();
     }
 
     // ── Message views ──
@@ -1126,7 +1298,7 @@ public class DocumentViewPanel : Panel
         {
             var bubble = new Border
             {
-                Background = Brush(ChatTheme.UserMessage),
+                Background = Brush(ChatTheme.UserMessage(_isDark)),
                 CornerRadius = new CornerRadius(14),
                 Padding = new Thickness(14, 9),
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -1441,6 +1613,8 @@ public class DocumentViewPanel : Panel
             line.Inlines.Add(new Avalonia.Controls.Documents.Run("  ✗") { Foreground = Brush(errColor) });
         else if (tool.Result == null)
             line.Inlines.Add(new Avalonia.Controls.Documents.Run("  " + Loc.Get("ChatToolRunning")));
+        if (tool.Name is "Agent" or "Task" && tool.Id != null && _currentSessionPath != null)
+            line.Inlines.Add(new Avalonia.Controls.Documents.InlineUIContainer(CreateAgentLink(tool, _currentSessionPath)));
 
         var rowHeader = new Border
         {
@@ -1471,6 +1645,29 @@ public class DocumentViewPanel : Panel
         row.Children.Add(rowHeader);
         row.Children.Add(body);
         return row;
+    }
+
+    /// <summary>
+    /// "Open conversation" after an Agent call: shows the subagent's own transcript in place.
+    /// The transcript is looked up on click - it is written while the agent runs, so it is often
+    /// not there yet when the row is built.
+    /// </summary>
+    private Control CreateAgentLink(ToolCall tool, string sessionPath)
+    {
+        double size = _baseFontSize * 0.85;
+        var link = FlatButton(Loc.Get("ChatSubagentOpenLink"), size, AccentColor);
+        link.Margin = new Thickness(10, 0, 0, 0);
+        link.Padding = new Thickness(0);
+        link.MinHeight = 0;
+        ToolTip.SetTip(link, Loc.Get("ChatSubagentOpen"));
+        link.Click += (_, e) =>
+        {
+            e.Handled = true;
+            var path = ChatTaskTracker.TranscriptFor(sessionPath, tool.Id!);
+            if (path != null) ShowAgent(path, ChatTaskTracker.AgentLabel(tool));
+            else ToolTip.SetTip(link, Loc.Get("ChatSubagentNoTranscript"));
+        };
+        return link;
     }
 
     /// <summary>What a call did, shaped by its kind: a command and its output, an edit as a diff.</summary>
@@ -1816,7 +2013,7 @@ public class DocumentViewPanel : Panel
             {
                 container.Children.Add(new Border
                 {
-                    Background = Brush(ChatTheme.UserMessage),
+                    Background = Brush(ChatTheme.UserMessage(_isDark)),
                     CornerRadius = new CornerRadius(14),
                     Padding = new Thickness(14, 9),
                     HorizontalAlignment = HorizontalAlignment.Right,

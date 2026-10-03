@@ -3958,7 +3958,7 @@ public partial class TerminalControl : Control, IDisposable
         }
         else
         {
-            _docViewPanel.StopPolling();
+            // Polling goes on without a transcript: the background list is tied to the folder
             _docViewPanel.Clear();
         }
     }
@@ -3992,6 +3992,7 @@ public partial class TerminalControl : Control, IDisposable
             }
 
             _docViewPanel.IsVisible = true;
+            _docViewPanel.ProjectFolder = _workingDirectory;
 
             if (_docViewSessionPath != null)
             {
@@ -4001,6 +4002,7 @@ public partial class TerminalControl : Control, IDisposable
             else
             {
                 _docViewPanel.Clear();
+                _docViewPanel.StartPolling();
             }
             StartSuggestionWatch();
         }
