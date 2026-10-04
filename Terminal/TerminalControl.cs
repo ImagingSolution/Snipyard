@@ -4417,7 +4417,7 @@ public partial class TerminalControl : Control, IDisposable
     /// <param name="Context">The prompt's rows above its options - the command or file being
     /// asked about - so two prompts with the same question still read as different ones.</param>
     private sealed record ChoicePrompt(ChoiceKind Kind, string Title, string Context,
-        IReadOnlyList<ChoiceOption> Options, int CaretNumber, string? Footer)
+        IReadOnlyList<ChoiceOption> Options, int CaretNumber, string? Footer, bool Unnumbered = false)
     {
         public string Signature => Kind + "\n" + Context + "\n"
             + string.Join("\n", Options.Select(o => o.Number + ". " + o.Label));
@@ -4458,7 +4458,7 @@ public partial class TerminalControl : Control, IDisposable
         int last = -1;
         for (int i = rows.Count - 1; i >= 0 && last < 0; i--)
             if (ChoiceRowRegex.IsMatch(rows[i])) last = i;
-        if (last < 0) return null;
+        if (last < 0) return ReadUnnumberedChoicePrompt();
 
         // Walk up through consecutive numbers. A long label wraps onto a row of its own, so a
         // couple of unnumbered rows between two options do not end the run.
@@ -4481,7 +4481,7 @@ public partial class TerminalControl : Control, IDisposable
             else break;
         }
         options.Reverse();
-        if (options.Count < 2 || caret < 0) return null;
+        if (options.Count < 2 || caret < 0) return ReadUnnumberedChoicePrompt();
 
         // The prompt's own rows above its options, up to the rule that opens it
         var context = new List<string>();
@@ -4514,6 +4514,64 @@ public partial class TerminalControl : Control, IDisposable
 
         var title = kind == ChoiceKind.Menu ? context.FirstOrDefault() ?? "" : question ?? "";
         return new ChoicePrompt(kind, title, string.Join("\n", context), options, caret, footer);
+    }
+
+    // "> No, exit" - the caret row of a selector whose options carry no numbers
+    private static readonly System.Text.RegularExpressions.Regex UnnumberedCaretRegex = new(
+        @"^[\s│|]*[❯>]\s+(?<label>\S.*?)\s*[│|]?$",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// The folder trust dialog a new project opens with ("Accessing workspace: …") lists
+    /// "> No, exit" / "Yes, I trust this folder" without numbers, over "Enter to confirm · Esc to
+    /// cancel". The options are the block of rows just above that footer, one of them carrying
+    /// the caret; they are numbered here in screen order so the arrow keys can be counted.
+    /// The footer is required: a bare "> " row is also the CLI's own input prompt.
+    /// </summary>
+    private ChoicePrompt? ReadUnnumberedChoicePrompt()
+    {
+        // The dialog sits at the top of a tall window with blank rows under it, so the last 30
+        // rows the numbered selectors are read from can miss its title
+        int totalRows = _buffer.Scrollback.Count + _buffer.Rows;
+        var rows = new List<string>();
+        for (int i = Math.Max(0, totalRows - 80); i < totalRows; i++)
+            rows.Add(GetRowText(i).TrimEnd());
+
+        int f = -1;
+        for (int i = rows.Count - 1; i >= 0 && f < 0; i--)
+            if (rows[i].Contains("Enter to confirm")) f = i;
+        if (f < 0) return null;
+
+        int end = f - 1;
+        while (end >= 0 && rows[end].Trim(' ', '│', '|').Length == 0) end--;
+        int start = end;
+        while (start - 1 >= 0 && rows[start - 1].Trim(' ', '│', '|').Length > 0) start--;
+        if (end < 0 || end - start + 1 is < 2 or > 10) return null;
+
+        var options = new List<ChoiceOption>();
+        int caret = -1;
+        for (int i = start; i <= end; i++)
+        {
+            var m = UnnumberedCaretRegex.Match(rows[i]);
+            var label = m.Success ? m.Groups["label"].Value : rows[i].Trim(' ', '│', '|');
+            options.Add(new ChoiceOption(options.Count + 1, label, false));
+            if (m.Success)
+            {
+                if (caret >= 0) return null;
+                caret = options.Count;
+            }
+        }
+        if (caret < 0) return null;
+
+        var context = new List<string>();
+        for (int i = start - 1; i >= 0 && context.Count < 12; i--)
+        {
+            var t = rows[i].Trim(' ', '│', '|');
+            if (t.Length > 0 && t.All(c => c is '─' or '━' or '▔' or '-' or '╭' or '╮' or '╌')) break;
+            if (t.Length > 0) context.Insert(0, t);
+        }
+        return new ChoicePrompt(ChoiceKind.Menu, context.FirstOrDefault() ?? "", string.Join("\n", context),
+            options, caret, rows[f].Trim(' ', '│', '|'), Unnumbered: true);
     }
 
     /// <summary>
@@ -4842,10 +4900,28 @@ public partial class TerminalControl : Control, IDisposable
         {
             // A menu can run to a dozen names: one per row, the current pick marked, scrolling
             // past a screenful
+            // A dialog such as the folder trust check says what it is about under its title
+            if (prompt.Unnumbered)
+            {
+                var body = string.Join("\n", prompt.Context.Split('\n').Skip(1));
+                if (body.Length > 0)
+                {
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = body,
+                        FontSize = 12,
+                        TextWrapping = TextWrapping.Wrap,
+                        TextAlignment = TextAlignment.Left,
+                        Foreground = secondary,
+                        MaxWidth = 560,
+                        Margin = new Thickness(0, 0, 0, 10),
+                    });
+                }
+            }
             var list = new StackPanel();
             foreach (var o in prompt.Options)
             {
-                var btn = MakeChoiceButton($"{o.Number}. {o.Label}", o.Label, null, true);
+                var btn = MakeChoiceButton(prompt.Unnumbered ? o.Label : $"{o.Number}. {o.Label}", o.Label, null, true);
                 if (o.Number == prompt.CaretNumber)
                 {
                     btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 122, 255));
@@ -4875,29 +4951,22 @@ public partial class TerminalControl : Control, IDisposable
         }
         else
         {
-            var buttonPanel = new WrapPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Left,
-            };
+            // Laid out like a menu: one option per row, the CLI's current pick outlined
+            var list = new StackPanel();
             ChoiceOption? textOption = null;
-            int shown = 0;
             foreach (var o in prompt.Options)
             {
                 if (o.TakesText) { textOption = o; continue; }
-                Color? fill = shown switch
+                var btn = MakeChoiceButton(ChoiceButtonText(prompt.Kind, o), o.Label, null, true);
+                if (o.Number == prompt.CaretNumber)
                 {
-                    0 => Color.FromRgb(0, 122, 255),
-                    1 => Color.FromRgb(48, 209, 88),
-                    _ => null,
-                };
-                var btn = MakeChoiceButton(ChoiceButtonText(prompt.Kind, o), o.Label, fill, false);
-                btn.Margin = new Thickness(4, 2);
+                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 122, 255));
+                    btn.BorderThickness = new Thickness(1.5);
+                }
                 btn.Click += (_, _) => ChooseOption(prompt, o, null);
-                buttonPanel.Children.Add(btn);
-                shown++;
+                list.Children.Add(btn);
             }
-            content.Children.Add(buttonPanel);
+            content.Children.Add(list);
 
             if (textOption != null)
             {
@@ -4929,6 +4998,23 @@ public partial class TerminalControl : Control, IDisposable
                 row.Children.Add(box);
                 row.Children.Add(send);
                 content.Children.Add(row);
+            }
+
+            if (prompt.Footer != null)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = prompt.Footer,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    TextAlignment = TextAlignment.Left,
+                    Foreground = secondary,
+                    Margin = new Thickness(0, 8, 0, 6),
+                });
+                var cancel = MakeChoiceButton(Services.Loc.Get("MenuCancel", "Cancel (Esc)"), "Esc", null, false);
+                cancel.HorizontalAlignment = HorizontalAlignment.Left;
+                cancel.Click += (_, _) => { HidePermissionOverlay(); _pty?.WriteInput("\x1b"); };
+                content.Children.Add(cancel);
             }
         }
 
