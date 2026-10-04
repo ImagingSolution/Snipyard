@@ -9058,6 +9058,8 @@ internal partial class AppShell : UserControl, IDockOwner
         _children.Add(entry);
         _activeChild = entry;
         entry.Owner = this;
+        // The terminal's find bar searches this window's transcript while the CLI holds the screen
+        terminal.SessionPathProvider = () => (entry.Owner as AppShell ?? this).ResolveSessionPath(entry);
         TabDrag.Hook(entry);
         WindowStrip.Children.Add(stripButton);
         ArrangeChildren();

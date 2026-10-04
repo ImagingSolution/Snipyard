@@ -289,6 +289,7 @@ public static class Loc
         ["ChatSubagentOpen"] = new() { ["English"] = "Open this subagent's conversation", ["日本語"] = "このサブエージェントの会話を開く" },
         ["ChatSearchPlaceholder"] = new() { ["English"] = "Search conversation", ["日本語"] = "会話を検索" },
         ["ChatSearchNone"] = new() { ["English"] = "No results", ["日本語"] = "一致なし" },
+        ["TermHistoryBanner"] = new() { ["English"] = "── Conversation history (Esc to return) ──", ["日本語"] = "── 会話履歴を表示中（Esc で戻る）──" },
         ["ChatSearchPrev"] = new() { ["English"] = "Previous match (Shift+Enter)", ["日本語"] = "前の一致 (Shift+Enter)" },
         ["ChatSearchNext"] = new() { ["English"] = "Next match (Enter)", ["日本語"] = "次の一致 (Enter)" },
         ["ChatSearchClose"] = new() { ["English"] = "Close (Esc)", ["日本語"] = "閉じる (Esc)" },

@@ -811,8 +811,8 @@ public class DocumentViewPanel : Panel
     }
 
     // What the reader can see of a message: its text, what was said beside its tools, and the
-    // one-line summary of each call
-    private static string SearchableText(ConversationMessage m)
+    // one-line summary of each call. The terminal's find bar searches the same text.
+    internal static string SearchableText(ConversationMessage m)
     {
         var sb = new System.Text.StringBuilder(m.Text);
         if (m.Narration != null) sb.Append('\n').Append(m.Narration);

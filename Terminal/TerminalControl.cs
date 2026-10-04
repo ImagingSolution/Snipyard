@@ -3556,6 +3556,8 @@ public partial class TerminalControl : Control, IDisposable
         if (_searchBar == null) return;
         _searchVisible = true;
         _searchBar.IsVisible = true;
+        PrepareHistorySearch();
+        if (!string.IsNullOrEmpty(_searchTerm)) UpdateSearchMatches();
         _searchTextBox?.Focus();
         _searchTextBox?.SelectAll();
         InvalidateMeasure();
@@ -3570,6 +3572,7 @@ public partial class TerminalControl : Control, IDisposable
         _searchMatches.Clear();
         _searchCurrentIndex = -1;
         _searchTerm = "";
+        EndHistorySearch();
         _inputTextBox.Focus();
         InvalidateVisual();
     }
@@ -3594,8 +3597,10 @@ public partial class TerminalControl : Control, IDisposable
         _searchMatches.Clear();
         _searchCurrentIndex = -1;
 
+        _histMatches.Clear();
         if (string.IsNullOrEmpty(_searchTerm))
         {
+            _historyShown = false;
             _searchCountLabel!.Text = "";
             InvalidateVisual();
             return;
@@ -3612,24 +3617,38 @@ public partial class TerminalControl : Control, IDisposable
                     : System.Text.RegularExpressions.RegexOptions.IgnoreCase;
                 regex = new System.Text.RegularExpressions.Regex(_searchTerm, opts);
             }
-            catch { /* invalid regex — skip */ _searchCountLabel!.Text = "!"; InvalidateVisual(); return; }
+            catch { /* invalid regex — skip */ _searchCountLabel!.Text = "!"; _historyShown = false; InvalidateVisual(); return; }
         }
 
-        int totalRows = _buffer.Scrollback.Count + _buffer.Rows;
-        for (int absRow = 0; absRow < totalRows; absRow++)
+        if (_historyMode)
         {
-            var rowText = GetRowText(absRow);
+            // Same matching as the Chat View's find unless Match Case is on
+            UpdateHistoryMatches(regex, _searchCaseSensitive ? StringComparison.Ordinal : StringComparison.CurrentCultureIgnoreCase);
+            UpdateSearchCountLabel();
+            InvalidateVisual();
+            return;
+        }
+
+        // The alternate buffer (the Claude CLI's screen) has no history of its own: the
+        // scrollback is whatever the main buffer held before the CLI started, and is not
+        // shown. Searching it would jump the view somewhere the user cannot see.
+        int scrollbackCount = _buffer.Scrollback.Count;
+        int totalRows = scrollbackCount + _buffer.Rows;
+        int firstRow = _buffer.IsAltBuffer ? scrollbackCount : 0;
+        for (int absRow = firstRow; absRow < totalRows; absRow++)
+        {
+            var rowText = GetRowText(absRow, out var colOf);
             if (regex != null)
             {
                 foreach (System.Text.RegularExpressions.Match m in regex.Matches(rowText))
-                    _searchMatches.Add((absRow, m.Index, m.Length));
+                    if (m.Length > 0) AddSearchMatch(absRow, colOf, m.Index, m.Length);
             }
             else
             {
                 int idx = 0;
                 while ((idx = rowText.IndexOf(_searchTerm, idx, comparison)) >= 0)
                 {
-                    _searchMatches.Add((absRow, idx, _searchTerm.Length));
+                    AddSearchMatch(absRow, colOf, idx, _searchTerm.Length);
                     idx += _searchTerm.Length;
                 }
             }
@@ -3657,6 +3676,48 @@ public partial class TerminalControl : Control, IDisposable
         catch { return null; }
     }
 
+    /// <summary>
+    /// Records a match found at string offset <paramref name="index"/> as cell columns.
+    /// Wide characters span two cells but one char, and astral characters (emoji) are two
+    /// chars in one cell, so the string offset and the column drift apart along the row.
+    /// </summary>
+    private void AddSearchMatch(int absRow, List<int> colOf, int index, int length)
+    {
+        int startCol = colOf[index];
+        int endCol = colOf[index + length];   // colOf has a sentinel for the end of the row
+        _searchMatches.Add((absRow, startCol, Math.Max(1, endCol - startCol)));
+    }
+
+    /// <summary>
+    /// Row text plus, for each char of it, the cell column it came from (with one extra
+    /// entry for the end of the row), so string offsets can be mapped back to the grid.
+    /// </summary>
+    private string GetRowText(int absRow, out List<int> colOf)
+    {
+        var sb = new System.Text.StringBuilder();
+        colOf = new List<int>(_buffer.Cols + 1);
+        int scrollbackCount = _buffer.Scrollback.Count;
+        for (int col = 0; col < _buffer.Cols; col++)
+        {
+            TerminalCell cell;
+            if (absRow < scrollbackCount)
+            {
+                var line = _buffer.GetScrollbackLine(absRow);
+                cell = (line != null && col < line.Length) ? line[col] : TerminalCell.Empty;
+            }
+            else
+            {
+                cell = _buffer.GetCell(absRow - scrollbackCount, col);
+            }
+            if (cell.Attributes.HasFlag(CellAttributes.WideCharTrail)) continue;
+            var text = cell.Text;
+            sb.Append(text);
+            for (int i = 0; i < text.Length; i++) colOf.Add(col);
+        }
+        colOf.Add(_buffer.Cols);
+        return sb.ToString();
+    }
+
     private string GetRowText(int absRow)
     {
         var sb = new System.Text.StringBuilder();
@@ -3681,6 +3742,15 @@ public partial class TerminalControl : Control, IDisposable
 
     private void SearchNavigate(int direction)
     {
+        if (_historyMode)
+        {
+            if (_histMatches.Count == 0) return;
+            _searchCurrentIndex = (_searchCurrentIndex + direction + _histMatches.Count) % _histMatches.Count;
+            ShowCurrentHistoryMatch();
+            UpdateSearchCountLabel();
+            InvalidateVisual();
+            return;
+        }
         if (_searchMatches.Count == 0) return;
         _searchCurrentIndex = (_searchCurrentIndex + direction + _searchMatches.Count) % _searchMatches.Count;
         UpdateSearchCountLabel();
@@ -3691,8 +3761,9 @@ public partial class TerminalControl : Control, IDisposable
     private void UpdateSearchCountLabel()
     {
         if (_searchCountLabel == null) return;
-        _searchCountLabel.Text = _searchMatches.Count > 0
-            ? $"{_searchCurrentIndex + 1}/{_searchMatches.Count}"
+        int count = _historyMode ? _histMatches.Count : _searchMatches.Count;
+        _searchCountLabel.Text = count > 0
+            ? $"{_searchCurrentIndex + 1}/{count}"
             : "0";
     }
 
@@ -5484,6 +5555,8 @@ public partial class TerminalControl : Control, IDisposable
     {
         base.OnPointerWheelChanged(e);
 
+        if (ScrollHistory(e.Delta.Y)) { e.Handled = true; return; }
+
         // Document view: let ScrollViewer inside DocumentViewPanel handle scrolling
         // (the side pane's terminal still scrolls here)
         if (_isDocumentView && !(TerminalInSidePane && SideTerminalRect.Contains(e.GetPosition(this))))
@@ -5561,6 +5634,12 @@ public partial class TerminalControl : Control, IDisposable
             using (context.PushClip(side))
             using (context.PushTransform(Matrix.CreateTranslation(side.X, side.Y)))
                 RenderGrid(context, bgDefault, fgDefault, termH, drawSeparator: false);
+            return;
+        }
+
+        if (_historyShown)
+        {
+            RenderHistory(context, bgDefault, fgDefault, termH);
             return;
         }
 
