@@ -8507,6 +8507,11 @@ internal partial class AppShell : UserControl, IDockOwner
                 ? _children[_activeChildIndex]
                 : (items.Count > 0 ? items[^1] : null);
 
+        // Maximized, the strip tab above already names the session and carries its dot and close
+        // button, so a terminal's own title bar would only repeat it. Tiled, it tells panes apart.
+        bool maximized = !_customLayout && _layout == MdiLayout.Maximize;
+        foreach (var child in _children) child.TitleBar.IsVisible = !maximized;
+
         if (_customLayout && MdiHost.Root != null) MdiHost.Reconcile(items, _activeLayoutItem);
         else MdiHost.Root = items.Count == 0 ? null : BuildPresetTree(items);
         MdiHost.Rebuild();
