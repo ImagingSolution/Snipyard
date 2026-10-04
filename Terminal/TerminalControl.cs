@@ -701,6 +701,11 @@ public partial class TerminalControl : Control, IDisposable
     private void OnInputTextInput(object? sender, TextInputEventArgs e)
     {
         if (string.IsNullOrEmpty(e.Text)) return;
+        if (_swallowCardSpace)
+        {
+            _swallowCardSpace = false;
+            if (e.Text == " ") { e.Handled = true; return; }
+        }
 
         // Filter out control characters (e.g., Backspace generates '\b' via TextInput
         // which would double-send with the KeyDown handler's \x7f)
@@ -775,6 +780,13 @@ public partial class TerminalControl : Control, IDisposable
 
         if (_isDocumentView && _completionPopup is { IsOpen: true } && _completionTarget == _inputTextBox
             && HandleCompletionKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // An open card takes Up/Down/Enter while the composer is empty
+        if (_isDocumentView && string.IsNullOrEmpty(_inputTextBox.Text) && HandleCardKey(e, focus: false))
         {
             e.Handled = true;
             return;
@@ -4733,6 +4745,9 @@ public partial class TerminalControl : Control, IDisposable
     private void ShowPermissionOverlay(ChoicePrompt prompt, string? promptText)
     {
         if (_permissionOverlay != null) return;
+        _cardChoices.Clear();
+        _cardChoice = -1;
+        _cardPages = false;
 
         var primary = new SolidColorBrush(_isDark ? Color.FromRgb(220, 220, 225) : Color.FromRgb(28, 28, 30));
         var secondary = new SolidColorBrush(_isDark ? Color.FromRgb(152, 152, 158) : Color.FromRgb(85, 85, 93));
@@ -4841,7 +4856,7 @@ public partial class TerminalControl : Control, IDisposable
                     label.Children.Add(new TextBlock { Text = o.Detail, FontSize = 11, TextWrapping = TextWrapping.Wrap, Opacity = 0.75 });
                 var btn = MakeChoiceButton("", o.Label, null, true);
                 btn.Content = label;
-                btn.Click += (_, _) => ChooseOption(prompt, o, null);
+                AddCardChoice(btn, () => ChooseOption(prompt, o, null), o.Number == prompt.CaretNumber, o.Toggles);
                 content.Children.Add(btn);
             }
 
@@ -4885,6 +4900,7 @@ public partial class TerminalControl : Control, IDisposable
             };
             // Multi-select pages are left with Right once the ticks are in; so is a question
             // skipped among several
+            _cardPages = toggles || tabs != null;
             if (toggles || tabs != null)
             {
                 var next = MakeChoiceButton(Services.Loc.Get("AskNextQuestion", "Next →"), "→", Color.FromRgb(0, 122, 255), false);
@@ -4922,12 +4938,7 @@ public partial class TerminalControl : Control, IDisposable
             foreach (var o in prompt.Options)
             {
                 var btn = MakeChoiceButton(prompt.Unnumbered ? o.Label : $"{o.Number}. {o.Label}", o.Label, null, true);
-                if (o.Number == prompt.CaretNumber)
-                {
-                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 122, 255));
-                    btn.BorderThickness = new Thickness(1.5);
-                }
-                btn.Click += (_, _) => ChooseOption(prompt, o, null);
+                AddCardChoice(btn, () => ChooseOption(prompt, o, null), o.Number == prompt.CaretNumber);
                 list.Children.Add(btn);
             }
             content.Children.Add(new ScrollViewer { Content = list, MaxHeight = 320 });
@@ -4958,12 +4969,7 @@ public partial class TerminalControl : Control, IDisposable
             {
                 if (o.TakesText) { textOption = o; continue; }
                 var btn = MakeChoiceButton(ChoiceButtonText(prompt.Kind, o), o.Label, null, true);
-                if (o.Number == prompt.CaretNumber)
-                {
-                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 122, 255));
-                    btn.BorderThickness = new Thickness(1.5);
-                }
-                btn.Click += (_, _) => ChooseOption(prompt, o, null);
+                AddCardChoice(btn, () => ChooseOption(prompt, o, null), o.Number == prompt.CaretNumber);
                 list.Children.Add(btn);
             }
             content.Children.Add(list);
@@ -5030,7 +5036,23 @@ public partial class TerminalControl : Control, IDisposable
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = content,
         };
+        _permissionOverlay.KeyDown += (_, ke) =>
+        {
+            if (ke.Source is not TextBox && HandleCardKey(ke, focus: true)) ke.Handled = true;
+        };
+        // A tick rebuilds the card; the selection stays on the ticked row, not the CLI's caret
+        int keep = _cardKeep;
+        bool keepFocus = _cardKeepFocus;
+        _cardKeep = -1;
+        _cardKeepFocus = false;
+        if (keep >= 0 && keep < _cardChoices.Count) _cardChoice = keep;
+        SelectCardChoice(Math.Max(0, _cardChoice), focus: false);
         _docViewPanel?.SetLiveCard(_permissionOverlay);
+        if (keepFocus && _cardChoices.Count > 0)
+        {
+            var b = _cardChoices[_cardChoice].Button;
+            Dispatcher.UIThread.Post(() => b.Focus(), DispatcherPriority.Loaded);
+        }
     }
 
     private void HidePermissionOverlay()
@@ -5038,6 +5060,89 @@ public partial class TerminalControl : Control, IDisposable
         if (_permissionOverlay == null) return;
         _docViewPanel?.SetLiveCard(null);
         _permissionOverlay = null;
+        _cardChoices.Clear();
+        _cardChoice = -1;
+    }
+
+    // ── Card keyboard ──
+    // The options of the open card, in order, and the one Up/Down has moved to. Enter picks
+    // it, as in the CLI's own selector, whether the composer or the card has focus.
+
+    private readonly List<(Button Button, Action Choose, bool Toggles)> _cardChoices = new();
+    private int _cardChoice = -1;
+    private int _cardKeep = -1;          // the row to select again once a tick rebuilds the card
+    private bool _cardKeepFocus;
+    private bool _cardPages;             // Left/Right move between the questions of an Ask card
+    private bool _swallowCardSpace;      // the Space that ticked a row is not typed into the composer
+
+    private void AddCardChoice(Button btn, Action choose, bool current, bool toggles = false)
+    {
+        int index = _cardChoices.Count;
+        Action act = toggles
+            ? () =>
+            {
+                _cardKeep = index;
+                _cardKeepFocus = _permissionOverlay?.IsKeyboardFocusWithin == true;
+                choose();
+            }
+            : choose;
+        btn.Click += (_, _) => act();
+        if (current) _cardChoice = index;
+        _cardChoices.Add((btn, act, toggles));
+    }
+
+    private void SelectCardChoice(int index, bool focus)
+    {
+        if (_cardChoices.Count == 0) return;
+        _cardChoice = Math.Clamp(index, 0, _cardChoices.Count - 1);
+        var outline = new SolidColorBrush(Color.FromRgb(0, 122, 255));
+        for (int i = 0; i < _cardChoices.Count; i++)
+        {
+            var b = _cardChoices[i].Button;
+            b.BorderBrush = i == _cardChoice ? outline : null;
+            b.BorderThickness = new Thickness(i == _cardChoice ? 1.5 : 0);
+        }
+        var selected = _cardChoices[_cardChoice].Button;
+        selected.BringIntoView();
+        if (focus) selected.Focus();
+    }
+
+    /// <summary>Up/Down move through the open card's options and Enter picks one.</summary>
+    private bool HandleCardKey(KeyEventArgs e, bool focus)
+    {
+        if (_permissionOverlay == null || _cardChoices.Count == 0 || e.KeyModifiers != KeyModifiers.None)
+            return false;
+        switch (e.Key)
+        {
+            case Key.Up:
+                SelectCardChoice(_cardChoice - 1, focus);
+                return true;
+            case Key.Down:
+                SelectCardChoice(_cardChoice + 1, focus);
+                return true;
+            case Key.Enter:
+                // A focused button outside the options (Next, Cancel) is clicked by itself
+                if (focus && e.Source is Button b && !_cardChoices.Exists(c => c.Button == b)) return false;
+                _cardChoices[Math.Max(0, _cardChoice)].Choose();
+                return true;
+            case Key.Space:
+                // Space ticks a multi-select row, as in the CLI; it picks nothing else
+                if (focus && e.Source is Button) return false;   // the button clicks itself
+                var row = _cardChoices[Math.Max(0, _cardChoice)];
+                if (!row.Toggles) return false;
+                _swallowCardSpace = !focus;
+                row.Choose();
+                return true;
+            case Key.Left:
+            case Key.Right:
+                if (!_cardPages) return false;
+                HidePermissionOverlay();
+                _choiceSignature = null;
+                _pty?.WriteInput(e.Key == Key.Right ? "\x1b[C" : "\x1b[D");
+                return true;
+            default:
+                return false;
+        }
     }
 
     // ── Diagram Cache ──
