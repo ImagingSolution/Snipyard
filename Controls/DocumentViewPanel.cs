@@ -120,6 +120,7 @@ public class DocumentViewPanel : Panel
     private readonly StackPanel _extrasPanel;
     private string _extrasKey = "";
     private bool _tasksExpanded = true;
+    private List<ChatTask> _chatTasks = new();
     // The subagent transcript on screen in place of the session, or null for the session itself
     private string? _agentPath;
     private string _agentTitle = "";
@@ -919,104 +920,46 @@ public class DocumentViewPanel : Panel
     }
 
     /// <summary>
-    /// Rebuilds the strip under the title: the back bar while a subagent is open, otherwise the
-    /// task checklist and the subagent list, each folded to one line until clicked.
+    /// Rebuilds the strip under the title - the back bar while a subagent is open - and hands
+    /// the task checklist to the bar above the input.
     /// </summary>
     private void UpdateExtras(List<ConversationMessage> messages)
     {
-        List<ChatTask> tasks = new();
-        if (_agentPath == null && _currentSessionPath != null)
-            tasks = ChatTaskTracker.ExtractTasks(messages);
-        var key = string.Join("\u001E",
-            _isDark, _baseFontSize, _agentPath, _agentTitle, _tasksExpanded,
-            string.Join("\u001F", tasks.Select(t => $"{t.Id}|{t.Status}|{t.Subject}|{t.ActiveForm}")));
+        var tasks = _agentPath == null && _currentSessionPath != null
+            ? ChatTaskTracker.ExtractTasks(messages) : new List<ChatTask>();
+        if (!tasks.SequenceEqual(_chatTasks))
+        {
+            _chatTasks = tasks;
+            UpdateBackgroundAgents();
+        }
+
+        var key = string.Join("\u001E", _isDark, _baseFontSize, _agentPath, _agentTitle);
         if (key == _extrasKey) return;
         _extrasKey = key;
         _extrasPanel.Children.Clear();
+        if (_agentPath == null) return;
 
         var pal = Palette;
         double size = _baseFontSize * 0.85;
-
-        if (_agentPath != null)
+        var back = FlatButton(Loc.Get("ChatBackToMain"), size, AccentColor);
+        back.Click += (_, _) => ShowAgent(null, "");
+        _extrasPanel.Children.Add(new StackPanel
         {
-            var back = FlatButton(Loc.Get("ChatBackToMain"), size, AccentColor);
-            back.Click += (_, _) => ShowAgent(null, "");
-            _extrasPanel.Children.Add(new StackPanel
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            Children =
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 12,
-                Children =
+                back,
+                new TextBlock
                 {
-                    back,
-                    new TextBlock
-                    {
-                        Text = string.Format(Loc.Get("ChatSubagentTitle"), _agentTitle),
-                        FontSize = size,
-                        Foreground = Brush(pal.Dim),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                    },
-                },
-            });
-            return;
-        }
-        if (tasks.Count == 0) return;
-
-        var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
-        _extrasPanel.Children.Add(toggles);
-
-        {
-            int done =tasks.Count(t => t.Status == ChatTaskStatus.Completed);
-            var toggle = FlatButton((_tasksExpanded ? "▾ " : "▸ ")
-                + string.Format(Loc.Get("ChatTasks"), done, tasks.Count), size, pal.Fg);
-            toggle.Click += (_, _) => { _tasksExpanded = !_tasksExpanded; UpdateExtras(messages); };
-            toggles.Children.Add(toggle);
-
-            // Folded, the line still says what Claude is on right now
-            var current = tasks.FirstOrDefault(t => t.Status == ChatTaskStatus.InProgress);
-            if (!_tasksExpanded && current != null)
-                toggles.Children.Add(new TextBlock
-                {
-                    Text = current.ActiveForm ?? current.Subject,
+                    Text = string.Format(Loc.Get("ChatSubagentTitle"), _agentTitle),
                     FontSize = size,
-                    Foreground = Brush(AccentColor),
+                    Foreground = Brush(pal.Dim),
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxWidth = 600,
-                });
-        }
-        if (_tasksExpanded)
-        {
-            var list = new StackPanel { Spacing = 2, Margin = new Thickness(14, 0, 0, 2) };
-            foreach (var t in tasks)
-            {
-                var (glyph, color) = t.Status switch
-                {
-                    ChatTaskStatus.Completed => ("✓", DoneColor),
-                    ChatTaskStatus.InProgress => ("◐", AccentColor),
-                    _ => ("○", pal.Dim),
-                };
-                list.Children.Add(new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children =
-                    {
-                        new TextBlock { Text = glyph, FontSize = size, Foreground = Brush(color), Width = 14 },
-                        new TextBlock
-                        {
-                            Text = t.Status == ChatTaskStatus.InProgress ? t.ActiveForm ?? t.Subject : t.Subject,
-                            FontSize = size,
-                            Foreground = Brush(t.Status == ChatTaskStatus.Completed ? pal.Dim : pal.Fg),
-                            FontWeight = t.Status == ChatTaskStatus.InProgress ? FontWeight.SemiBold : FontWeight.Normal,
-                            TextDecorations = t.Status == ChatTaskStatus.Completed ? TextDecorations.Strikethrough : null,
-                            TextTrimming = TextTrimming.CharacterEllipsis,
-                        },
-                    },
-                });
-            }
-            _extrasPanel.Children.Add(list);
-        }
+                },
+            },
+        });
     }
 
     private Button FlatButton(string text, double size, Color fg) => new()
@@ -1078,8 +1021,8 @@ public class DocumentViewPanel : Panel
     }
 
     /// <summary>
-    /// Lists what is working behind the prompt above the input: the live background sessions of
-    /// this folder, then the subagents this session still has running - the same rows the
+    /// Lists what is working behind the prompt above the input: the session's task checklist,
+    /// the live background sessions of this folder, then the subagents this session still has running - the same rows the
     /// windows panel puts under the window. Hidden when there are none.
     /// </summary>
     private void UpdateBackgroundAgents()
@@ -1105,7 +1048,9 @@ public class DocumentViewPanel : Panel
                 : span.Seconds + "s";
         }
 
-        var key = string.Join("\u001E", _isDark, _baseFontSize,
+        var tasks = _chatTasks;
+        var key = string.Join("\u001E", _isDark, _baseFontSize, _tasksExpanded,
+            string.Join("\u001F", tasks.Select(t => $"{t.Id}|{t.Status}|{t.Subject}|{t.ActiveForm}")),
             string.Join("\u001F", agents.Select(a =>
                 $"{a.Id}|{a.State}|{a.ProcessAlive}|{Name(a)}|{a.Detail}|{a.Started.Ticks}")),
             string.Join("\u001F", subagents.Select(s =>
@@ -1122,7 +1067,7 @@ public class DocumentViewPanel : Panel
         _backgroundClocks.Clear();
 
         bool wasVisible = _backgroundBar.IsVisible;
-        _backgroundBar.IsVisible = agents.Count + subagents.Count > 0;
+        _backgroundBar.IsVisible = tasks.Count + agents.Count + subagents.Count > 0;
         var pal = Palette;
         double size = _baseFontSize * 0.85;
         TextBlock SectionTitle(string text) => new()
@@ -1143,6 +1088,61 @@ public class DocumentViewPanel : Panel
             };
             _backgroundClocks.Add((clock, started));
             return clock;
+        }
+        if (tasks.Count > 0)
+        {
+            var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+            _backgroundList.Children.Add(toggles);
+            int done =tasks.Count(t => t.Status == ChatTaskStatus.Completed);
+            var toggle = FlatButton((_tasksExpanded ? "▾ " : "▸ ")
+                + string.Format(Loc.Get("ChatTasks"), done, tasks.Count), size, pal.Fg);
+            toggle.Click += (_, _) => { _tasksExpanded = !_tasksExpanded; _backgroundKey = ""; UpdateBackgroundAgents(); };
+            toggles.Children.Add(toggle);
+
+            // Folded, the line still says what Claude is on right now
+            var current = tasks.FirstOrDefault(t => t.Status == ChatTaskStatus.InProgress);
+            if (!_tasksExpanded && current != null)
+                toggles.Children.Add(new TextBlock
+                {
+                    Text = current.ActiveForm ?? current.Subject,
+                    FontSize = size,
+                    Foreground = Brush(AccentColor),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 600,
+                });
+        }
+        if (tasks.Count > 0 && _tasksExpanded)
+        {
+            var list = new StackPanel { Spacing = 2, Margin = new Thickness(14, 0, 0, 2) };
+            foreach (var t in tasks)
+            {
+                var (glyph, color) = t.Status switch
+                {
+                    ChatTaskStatus.Completed => ("✓", DoneColor),
+                    ChatTaskStatus.InProgress => ("◐", AccentColor),
+                    _ => ("○", pal.Dim),
+                };
+                list.Children.Add(new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        new TextBlock { Text = glyph, FontSize = size, Foreground = Brush(color), Width = 14 },
+                        new TextBlock
+                        {
+                            Text = t.Status == ChatTaskStatus.InProgress ? t.ActiveForm ?? t.Subject : t.Subject,
+                            FontSize = size,
+                            Foreground = Brush(t.Status == ChatTaskStatus.Completed ? pal.Dim : pal.Fg),
+                            FontWeight = t.Status == ChatTaskStatus.InProgress ? FontWeight.SemiBold : FontWeight.Normal,
+                            TextDecorations = t.Status == ChatTaskStatus.Completed ? TextDecorations.Strikethrough : null,
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                        },
+                    },
+                });
+            }
+            _backgroundList.Children.Add(list);
         }
         if (agents.Count > 0)
         {
