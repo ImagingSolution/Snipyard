@@ -722,6 +722,13 @@ public partial class TerminalControl : Control, IDisposable
         // Document view mode: accumulate all text in the input box until Enter
         if (_isDocumentView)
         {
+            // A panel such as /config filters its rows as you type: the text is its, not a prompt
+            if (_panelText != null)
+            {
+                SendPanelKey(e.Text);
+                e.Handled = true;
+                return;
+            }
             // Let the TextBox handle the input naturally (don't send to PTY)
             // Text stays in the input box until Enter is pressed
             return;
@@ -4406,12 +4413,24 @@ public partial class TerminalControl : Control, IDisposable
         // The card is then read off the screen instead.
         if (prompt == null && _isDocumentView && _docViewPanel is { HasOpenAskCard: false })
             prompt = ReadAskPrompt();
+        // Panels such as /mcp list their rows without numbers, under headings and notes; the
+        // card copies the panel as it stands and passes the keys through
+        if (prompt == null && _isDocumentView && _docViewPanel is { HasOpenAskCard: false } && !IsAskSelectorOnScreen())
+            prompt = ReadScreenPanel();
 
         // Rebuilt only when the prompt itself changes, not on every caret move. A card that was
         // just answered stays down until its prompt leaves the screen, rather than popping back up
         // while the CLI is still taking the keys in.
         var signature = prompt?.Signature;
         if (signature == _choiceSignature) return;
+        // A panel redraws on every arrow key: the same page is updated in place, so the card
+        // neither flickers nor jumps back to the top
+        if (prompt is { Kind: ChoiceKind.Panel } && _panelText != null && _panelTitle == prompt.Title)
+        {
+            _choiceSignature = signature;
+            FillPanelText(prompt.Context);
+            return;
+        }
         HidePermissionOverlay();
         _choiceSignature = signature;
         if (prompt != null)
@@ -4420,7 +4439,8 @@ public partial class TerminalControl : Control, IDisposable
 
     private string? _choiceSignature;
 
-    private enum ChoiceKind { Permission, Plan, Menu, Ask }
+    /// <summary>Panel: a selector the card cannot pick apart, shown as the CLI draws it.</summary>
+    private enum ChoiceKind { Permission, Plan, Menu, Ask, Panel }
 
     /// <param name="Detail">The description rows under an AskUserQuestion option.</param>
     /// <param name="Toggles">A multi-select option: its digit ticks it rather than picking it.</param>
@@ -4584,6 +4604,53 @@ public partial class TerminalControl : Control, IDisposable
         }
         return new ChoicePrompt(ChoiceKind.Menu, context.FirstOrDefault() ?? "", string.Join("\n", context),
             options, caret, rows[f].Trim(' ', '│', '|'), Unnumbered: true);
+    }
+
+    // The key hint a panel ends with: "↑/↓ to navigate · Enter to confirm · Esc to cancel", or
+    // /config's "Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear"
+    private static readonly System.Text.RegularExpressions.Regex PanelFooterRegex = new(
+        @"Esc to (cancel|close|clear|go back|exit)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Any other panel the CLI is showing, such as /mcp (Claude Code 2.x): a title, groups of
+    /// rows under headings with notes between them, and the key hint at the bottom. Which rows
+    /// the caret can reach is not on the screen, so the panel is taken whole: from the rule that
+    /// opens it down to the hint, which must be one of the last rows on screen.
+    /// </summary>
+    private ChoicePrompt? ReadScreenPanel()
+    {
+        int totalRows = _buffer.Scrollback.Count + _buffer.Rows;
+        var rows = new List<string>();
+        for (int i = Math.Max(0, totalRows - 80); i < totalRows; i++)
+            rows.Add(GetRowText(i).TrimEnd());
+
+        int f = -1;
+        for (int i = rows.Count - 1, seen = 0; i >= 0 && seen < 4 && f < 0; i--)
+        {
+            if (rows[i].Trim(' ', '│', '|').Length == 0) continue;
+            if (PanelFooterRegex.IsMatch(rows[i])) f = i;
+            seen++;
+        }
+        if (f < 0) return null;
+
+        int start = f;
+        while (start - 1 >= 0 && f - start < 60)
+        {
+            // A box inside the panel, such as /config's search field, is not where it opens
+            var t = rows[start - 1].Trim(' ', '│', '|');
+            if (t.Length >= 10 && t.All(c => c is '─' or '━' or '▔' or '-' or '╌')) break;
+            start--;
+        }
+        // Rows are kept whole: a box inside the panel ends in the same bar a frame would
+        var lines = rows.GetRange(start, f - start + 1);
+        while (lines.Count > 0 && lines[0].Trim().Length == 0) lines.RemoveAt(0);
+        if (lines.Count < 2) return null;
+
+        int indent = lines.Where(l => l.Trim().Length > 0).Min(l => l.Length - l.TrimStart().Length);
+        lines = lines.Select(l => l.Length >= indent ? l[indent..] : l.TrimStart()).ToList();
+        return new ChoicePrompt(ChoiceKind.Panel, lines[0].Trim(), string.Join("\n", lines),
+            Array.Empty<ChoiceOption>(), -1, lines[^1].Trim());
     }
 
     /// <summary>
@@ -4912,6 +4979,46 @@ public partial class TerminalControl : Control, IDisposable
             actions.Children.Add(cancelAsk);
             content.Children.Add(actions);
         }
+        else if (prompt.Kind == ChoiceKind.Panel)
+        {
+            // The panel in the terminal's font, so its columns still line up; the title is the
+            // card's heading above
+            _panelTitle = prompt.Title;
+            _panelText = new SelectableTextBlock
+            {
+                FontFamily = _typeface.FontFamily,
+                FontSize = 12,
+                // Fixed, so box-drawing glyphs from a fallback font do not spread the rows apart
+                LineHeight = PanelLineHeight,
+                Foreground = primary,
+                TextWrapping = TextWrapping.NoWrap,
+            };
+            // Fitted to the chat view once laid out (see FillPanelText); the caret's row is kept in
+            // sight. Rows wider than the card are cut off: a horizontal bar would sit over the last row.
+            _panelScroll = new ScrollViewer
+            {
+                Content = _panelText,
+                MaxHeight = 240,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            };
+            FillPanelText(prompt.Context);
+            content.Children.Add(_panelScroll);
+
+            var keys = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 10, 0, 0),
+            };
+            foreach (var (text, seq) in new[] { ("↑", "\x1b[A"), ("↓", "\x1b[B"), ("Enter", "\r"),
+                         (Services.Loc.Get("MenuCancel", "Cancel (Esc)"), "\x1b") })
+            {
+                var key = MakeChoiceButton(text, text, text == "Enter" ? Color.FromRgb(0, 122, 255) : null, false);
+                key.Click += (_, _) => SendPanelKey(seq);
+                keys.Children.Add(key);
+            }
+            content.Children.Add(keys);
+        }
         else if (prompt.Kind == ChoiceKind.Menu)
         {
             // A menu can run to a dozen names: one per row, the current pick marked, scrolling
@@ -5040,6 +5147,13 @@ public partial class TerminalControl : Control, IDisposable
         {
             if (ke.Source is not TextBox && HandleCardKey(ke, focus: true)) ke.Handled = true;
         };
+        // Typing with a panel card's button focused still reaches the panel's filter
+        _permissionOverlay.TextInput += (_, te) =>
+        {
+            if (_panelText == null || te.Source is TextBox || string.IsNullOrEmpty(te.Text) || te.Text == " ") return;
+            SendPanelKey(te.Text);
+            te.Handled = true;
+        };
         // A tick rebuilds the card; the selection stays on the ticked row, not the CLI's caret
         int keep = _cardKeep;
         bool keepFocus = _cardKeepFocus;
@@ -5062,6 +5176,72 @@ public partial class TerminalControl : Control, IDisposable
         _permissionOverlay = null;
         _cardChoices.Clear();
         _cardChoice = -1;
+        _panelText = null;
+        _panelScroll = null;
+        _panelTitle = null;
+    }
+
+    // ── Panel card ──
+
+    private const double PanelLineHeight = 17;
+    private SelectableTextBlock? _panelText;
+    private ScrollViewer? _panelScroll;
+    private string? _panelTitle;
+
+    /// <summary>The panel's rows under its title, the caret's row picked out.</summary>
+    private void FillPanelText(string panel)
+    {
+        if (_panelText == null) return;
+        var accent = new SolidColorBrush(Color.FromRgb(0, 122, 255));
+        var inlines = new Avalonia.Controls.Documents.InlineCollection();
+        var lines = panel.Split('\n').Skip(1).ToList();
+        while (lines.Count > 0 && lines[0].Trim().Length == 0) lines.RemoveAt(0);
+        int caretLine = -1;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (i > 0) inlines.Add(new Avalonia.Controls.Documents.LineBreak());
+            var run = new Avalonia.Controls.Documents.Run(lines[i]);
+            if (lines[i].TrimStart().StartsWith('>') || lines[i].TrimStart().StartsWith('❯'))
+            {
+                run.Foreground = accent;
+                run.FontWeight = FontWeight.SemiBold;
+                caretLine = i;
+            }
+            inlines.Add(run);
+        }
+        _panelText.Inlines = inlines;
+
+        var scroll = _panelScroll;
+        if (scroll == null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Read here: on the card's first fill it is not yet in place
+            var card = _panelScroll == scroll ? _permissionOverlay : null;
+            // The panel's rows take what the chat view has left once the heading and keys are in
+            double room = _docViewPanel?.LiveCardRoom ?? 0;
+            if (card != null && room > 0)
+            {
+                double chrome = card.Bounds.Height - scroll.Bounds.Height;
+                double h = Math.Max(4 * PanelLineHeight, room - chrome);
+                if (Math.Abs(h - scroll.MaxHeight) > 1)
+                {
+                    scroll.MaxHeight = h;
+                    Dispatcher.UIThread.Post(() => _docViewPanel?.KeepLiveCardInView(), DispatcherPriority.Loaded);
+                }
+            }
+            if (caretLine < 0) return;
+            double top = caretLine * PanelLineHeight, view = Math.Min(scroll.Viewport.Height, scroll.MaxHeight);
+            if (view <= 0) return;
+            if (top < scroll.Offset.Y || top + PanelLineHeight > scroll.Offset.Y + view)
+                scroll.Offset = new Vector(scroll.Offset.X, Math.Max(0, top - view / 3));
+        }, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Keys a panel card passes to the CLI, read back at once rather than on the next tick.</summary>
+    private void SendPanelKey(string seq)
+    {
+        _pty?.WriteInput(seq);
+        DispatcherTimer.RunOnce(() => OnPermissionCheckTick(null, EventArgs.Empty), TimeSpan.FromMilliseconds(120));
     }
 
     // ── Card keyboard ──
@@ -5087,6 +5267,8 @@ public partial class TerminalControl : Control, IDisposable
             }
             : choose;
         btn.Click += (_, _) => act();
+        // The outline follows the mouse, so the hovered row and the one Enter picks never disagree
+        btn.PointerEntered += (_, _) => SelectCardChoice(index, focus: false);
         if (current) _cardChoice = index;
         _cardChoices.Add((btn, act, toggles));
     }
@@ -5110,6 +5292,29 @@ public partial class TerminalControl : Control, IDisposable
     /// <summary>Up/Down move through the open card's options and Enter picks one.</summary>
     private bool HandleCardKey(KeyEventArgs e, bool focus)
     {
+        // A panel card has no rows of its own: the keys go to the CLI as typed
+        if (_panelText != null && e.KeyModifiers == KeyModifiers.None)
+        {
+            // A focused key button clicks itself
+            if (focus && e.Source is Button && e.Key is Key.Enter or Key.Space) return false;
+            string? seq = e.Key switch
+            {
+                Key.Up => "\x1b[A",
+                Key.Down => "\x1b[B",
+                Key.Right => "\x1b[C",
+                Key.Left => "\x1b[D",
+                Key.Enter => "\r",
+                Key.Escape => "\x1b",
+                Key.Space => " ",
+                Key.Back => "\x7f",
+                Key.Tab => "\t",
+                _ => null,
+            };
+            if (seq == null) return false;
+            _swallowCardSpace = e.Key == Key.Space && !focus;
+            SendPanelKey(seq);
+            return true;
+        }
         if (_permissionOverlay == null || _cardChoices.Count == 0 || e.KeyModifiers != KeyModifiers.None)
             return false;
         switch (e.Key)

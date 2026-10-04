@@ -596,6 +596,27 @@ public class DocumentViewPanel : Panel
         ScrollToBottom();
     }
 
+    /// <summary>
+    /// How tall the live card can be and still be seen whole once the view is scrolled to the
+    /// bottom: the viewport less whatever sits under the card.
+    /// </summary>
+    public double LiveCardRoom
+    {
+        get
+        {
+            if (_liveCard == null || _scrollViewer.Content is not Visual content) return 0;
+            var bottom = _liveCard.TranslatePoint(new Point(0, _liveCard.Bounds.Height), content);
+            if (bottom == null) return 0;
+            return _scrollViewer.Viewport.Height - (_scrollViewer.Extent.Height - bottom.Value.Y) - 8;
+        }
+    }
+
+    /// <summary>Scrolls back down to the live card after it changed size, unless the reader scrolled away.</summary>
+    public void KeepLiveCardInView()
+    {
+        if (_autoScroll) ScrollToBottom();
+    }
+
     /// <summary>Hides a rewound prompt and what followed it (see <see cref="_hideFromUuid"/>).</summary>
     public void HideFrom(string uuid)
     {
