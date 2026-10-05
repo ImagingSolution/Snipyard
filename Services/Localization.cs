@@ -919,6 +919,7 @@ public static class Loc
         ["BranchInWorktreeFmt"] = new() { ["English"] = "\"{0}\" is checked out in another worktree, and git allows a branch to be checked out in only one place at a time.\n\nIn use at: {1}\n\n- To work on that branch, use the worktree session tab for that folder.\n- To bring its changes here, merge it into the current branch.\n- To check it out here, close the worktree session first.", ["日本語"] = "ブランチ「{0}」は別のワークツリーでチェックアウトされています。Git では 1 つのブランチを同時に複数の場所でチェックアウトできないため、ここには切り替えられません。\n\n使用中のフォルダ: {1}\n\n・そのブランチで作業する場合は、該当フォルダの worktree セッションのタブを使ってください。\n・変更をここに取り込む場合は、現在のブランチへマージしてください。\n・ここでチェックアウトしたい場合は、先に worktree セッションを閉じてください。" },
         ["NothingToPush"] = new() { ["English"] = "Nothing to push.", ["日本語"] = "プッシュするコミットがありません。" },
         ["BranchAheadFmt"] = new() { ["English"] = "{0} ahead", ["日本語"] = "{0} 件先行" },
+        ["BaseAheadFmt"] = new() { ["English"] = "{0} new commit(s) on {1}, the branch this one started from", ["日本語"] = "作成元ブランチ {1} に未取り込みのコミットが {0} 件あります" },
         ["RemoteAheadFmt"] = new() { ["English"] = "{0} new commit(s) on the remote to pull", ["日本語"] = "リモートに未取り込みのコミットが {0} 件あります" },
         ["CreateRepositoryMenuItem"] = new() { ["English"] = "Create Repository...", ["日本語"] = "リポジトリを新規作成..." },
         ["CloneRepositoryMenuItem"] = new() { ["English"] = "Clone Repository...", ["日本語"] = "リポジトリをクローン..." },

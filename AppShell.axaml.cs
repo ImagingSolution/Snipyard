@@ -4382,6 +4382,7 @@ internal partial class AppShell : UserControl, IDockOwner
     /// <summary>The repository the badge is counting for, or null when the project is not in one.</summary>
     private string? _badgeRepo;
     private int _badgeCount;
+    private string _badgeDetail = "";
     /// <summary>
     /// Orders the readings: one started before a fetch landed can finish after the one started
     /// behind it, and must not put the pre-fetch count back.
@@ -4432,7 +4433,7 @@ internal partial class AppShell : UserControl, IDockOwner
         if (ticket < _badgeShownTicket || !string.Equals(repo, _badgeRepo, StringComparison.OrdinalIgnoreCase)) return;
 
         _badgeShownTicket = ticket;
-        SetSourceControlBadge(state.HasUpstream ? state.Behind : 0);
+        SetSourceControlBadge(state);
     }
 
     /// <summary>The panel's own fetches and pulls read the branch anyway; the badge takes that reading.</summary>
@@ -4441,7 +4442,7 @@ internal partial class AppShell : UserControl, IDockOwner
         if (!string.Equals(repo, _badgeRepo, StringComparison.OrdinalIgnoreCase)) return;
 
         _badgeShownTicket = ++_badgeReadTicket;
-        SetSourceControlBadge(state.HasUpstream ? state.Behind : 0);
+        SetSourceControlBadge(state);
     }
 
     /// <summary>
@@ -4462,6 +4463,24 @@ internal partial class AppShell : UserControl, IDockOwner
     private void SetSourceControlBadge(int count)
     {
         _badgeCount = count;
+        _badgeDetail = "";
+        ApplySourceControlBadge();
+    }
+
+    /// <summary>
+    /// Counts what the branch could still take in: new commits on its upstream and on the
+    /// branch it was started from, each commit once. The tooltip says which is which, since
+    /// only the first comes in with a pull.
+    /// </summary>
+    private void SetSourceControlBadge(BranchState state)
+    {
+        _badgeCount = state.Incoming;
+        var lines = new List<string>();
+        if (state.HasUpstream && state.Behind > 0)
+            lines.Add(string.Format(Loc.Get("RemoteAheadFmt"), state.Behind));
+        if (state.BaseBehind > 0)
+            lines.Add(string.Format(Loc.Get("BaseAheadFmt"), state.BaseBehind, state.BaseRef));
+        _badgeDetail = string.Join("\n", lines);
         ApplySourceControlBadge();
     }
 
@@ -4470,7 +4489,9 @@ internal partial class AppShell : UserControl, IDockOwner
         SourceControlBadge.IsVisible = _badgeCount > 0;
         SourceControlBadgeText.Text = _badgeCount > 99 ? "99+" : _badgeCount.ToString();
         ToolTip.SetTip(BtnActivitySourceControl, _badgeCount > 0
-            ? Loc.Get("SourceControlTooltip") + "\n" + string.Format(Loc.Get("RemoteAheadFmt"), _badgeCount)
+            ? Loc.Get("SourceControlTooltip") + "\n" + (_badgeDetail.Length > 0
+                ? _badgeDetail
+                : string.Format(Loc.Get("RemoteAheadFmt"), _badgeCount))
             : Loc.Get("SourceControlTooltip"));
     }
 

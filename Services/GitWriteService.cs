@@ -15,6 +15,21 @@ public sealed record BranchState(string Current, int Ahead, int Behind, bool Has
     /// the panel say "detached" instead of showing a bare dash that reads like "no repository".
     /// </summary>
     public string DetachedAt { get; init; } = "";
+
+    /// <summary>
+    /// The remote branch this one was started from, such as "origin/main", or empty when it
+    /// cannot be told or is the branch's own upstream.
+    /// </summary>
+    public string BaseRef { get; init; } = "";
+
+    /// <summary>Commits on <see cref="BaseRef"/> that HEAD does not contain yet.</summary>
+    public int BaseBehind { get; init; }
+
+    /// <summary>
+    /// Commits on the upstream or on the base that HEAD does not contain, each counted once -
+    /// everything a pull or a merge from the base might still bring in.
+    /// </summary>
+    public int Incoming { get; init; }
 }
 
 /// <summary>
@@ -250,7 +265,10 @@ public static class GitWriteService
         });
     }
 
-    /// <summary>Creates a branch at HEAD and switches to it.</summary>
+    /// <summary>
+    /// Creates a branch at HEAD and switches to it, noting which branch it was started from so
+    /// the badge can count what lands there later (see <see cref="FindBaseRef"/>).
+    /// </summary>
     public static Task<GitResult> CreateBranchAsync(string repoRoot, string branch)
     {
         return Task.Run(() =>
@@ -258,7 +276,11 @@ public static class GitWriteService
             if (!Usable(repoRoot)) return GitResult.Failed("not a repository");
             if (string.IsNullOrWhiteSpace(branch)) return GitResult.Failed("no branch given");
 
-            return GitCli.Execute(repoRoot, null, "switch", "-c", branch);
+            var from = GitCli.Run(repoRoot, "branch", "--show-current").Trim();
+            var result = GitCli.Execute(repoRoot, null, "switch", "-c", branch);
+            if (result.Ok && from.Length > 0)
+                GitCli.Execute(repoRoot, null, "config", "--local", $"branch.{branch}.{BaseBranchConfigKey}", from);
+            return result;
         });
     }
 
@@ -301,16 +323,108 @@ public static class GitWriteService
 
             var upstream = GitCli.Execute(repoRoot, null,
                 "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
-            if (!upstream.Ok) return new BranchState(current, 0, 0, false);
+            var upstreamName = upstream.Ok ? upstream.StdOut.Trim() : "";
 
-            // "<behind>\t<ahead>" - left is the upstream side, right is ours.
-            var counts = GitCli.Run(repoRoot, "rev-list", "--left-right", "--count", "@{upstream}...HEAD");
-            var parts = counts.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            int behind = parts.Length > 0 && int.TryParse(parts[0], out var b) ? b : 0;
-            int ahead = parts.Length > 1 && int.TryParse(parts[1], out var a) ? a : 0;
+            var state = new BranchState(current, 0, 0, false);
+            if (upstream.Ok)
+            {
+                // "<behind>\t<ahead>" - left is the upstream side, right is ours.
+                var counts = GitCli.Run(repoRoot, "rev-list", "--left-right", "--count", "@{upstream}...HEAD");
+                var parts = counts.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                int behind = parts.Length > 0 && int.TryParse(parts[0], out var b) ? b : 0;
+                int ahead = parts.Length > 1 && int.TryParse(parts[1], out var a) ? a : 0;
+                state = new BranchState(current, ahead, behind, true);
+            }
 
-            return new BranchState(current, ahead, behind, true);
+            var baseRef = FindBaseRef(repoRoot, current, upstreamName);
+            if (baseRef.Length == 0) return state with { Incoming = state.Behind };
+
+            // The union, not the sum: a commit merged into both the base and the upstream is
+            // one thing to bring in, not two.
+            int baseBehind = CountRevs(repoRoot, "rev-list", "--count", baseRef, "^HEAD", "--");
+            int incoming = upstream.Ok
+                ? CountRevs(repoRoot, "rev-list", "--count", "@{upstream}", baseRef, "^HEAD", "--")
+                : baseBehind;
+            return state with { BaseRef = baseRef, BaseBehind = baseBehind, Incoming = incoming };
         });
+    }
+
+    /// <summary>
+    /// Where <see cref="CreateBranchAsync"/> notes the branch a new one was started from. Git
+    /// itself keeps no such record past the reflog, which expires.
+    /// </summary>
+    public const string BaseBranchConfigKey = "snipyard-base";
+
+    private static int CountRevs(string repoRoot, params string[] args) =>
+        int.TryParse(GitCli.Run(repoRoot, args).Trim(), out var n) ? n : 0;
+
+    /// <summary>
+    /// The remote branch <paramref name="current"/> was started from, or "" when that cannot be
+    /// told. Git does not record a branch's parent, so this asks, in order: the note this app
+    /// writes on "New branch...", the branch's own reflog ("branch: Created from main"), and the
+    /// HEAD reflog's oldest "checkout: moving from main to feature" - which is what both
+    /// `switch -c` and `checkout -b` write. There is deliberately no guess at the default branch:
+    /// a release branch that never takes main would wear a badge it can never clear.
+    /// </summary>
+    private static string FindBaseRef(string repoRoot, string current, string upstreamName)
+    {
+        var candidates = new List<string>();
+
+        var noted = GitCli.Run(repoRoot, "config", "--local", "--get", $"branch.{current}.{BaseBranchConfigKey}").Trim();
+        if (noted.Length > 0) candidates.Add(noted);
+
+        const string createdFrom = "branch: Created from ";
+        var branchLog = GitCli.Run(repoRoot, "reflog", "show", "--format=%gs", "refs/heads/" + current, "--")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (branchLog.Length > 0 && branchLog[^1].TrimEnd().StartsWith(createdFrom, StringComparison.Ordinal))
+            candidates.Add(branchLog[^1].TrimEnd()[createdFrom.Length..].Trim());
+
+        var movedInto = " to " + current;
+        const string moving = "checkout: moving from ";
+        var headLog = GitCli.Run(repoRoot, "reflog", "show", "--format=%gs", "HEAD", "--")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = headLog.Length - 1; i >= 0; i--)
+        {
+            var line = headLog[i].TrimEnd();
+            if (!line.StartsWith(moving, StringComparison.Ordinal) || !line.EndsWith(movedInto, StringComparison.Ordinal)
+                || line.Length <= moving.Length + movedInto.Length)
+                continue;
+            candidates.Add(line[moving.Length..^movedInto.Length]);
+            break;
+        }
+
+        foreach (var name in candidates)
+        {
+            var remote = ResolveRemoteRef(repoRoot, name, current);
+            if (remote.Length > 0 && !string.Equals(remote, upstreamName, StringComparison.Ordinal))
+                return remote;
+        }
+        return "";
+    }
+
+    /// <summary>
+    /// The remote-tracking ref that stands for <paramref name="name"/>: itself when it already is
+    /// one, else that local branch's upstream, else origin/&lt;name&gt;. A local branch alone is no
+    /// use - it never moves when someone else pushes.
+    /// </summary>
+    private static string ResolveRemoteRef(string repoRoot, string name, string current)
+    {
+        if (name.Length == 0 || name == "HEAD" || name == current || name.StartsWith("-", StringComparison.Ordinal))
+            return "";
+
+        bool IsRemote(string n) =>
+            GitCli.Execute(repoRoot, null, "show-ref", "--verify", "-q", "refs/remotes/" + n).Ok;
+
+        if (IsRemote(name)) return name;
+
+        if (GitCli.Execute(repoRoot, null, "show-ref", "--verify", "-q", "refs/heads/" + name).Ok)
+        {
+            var up = GitCli.Execute(repoRoot, null,
+                "rev-parse", "--abbrev-ref", "--symbolic-full-name", name + "@{upstream}");
+            if (up.Ok && up.StdOut.Trim().Length > 0) return up.StdOut.Trim();
+        }
+
+        return IsRemote("origin/" + name) ? "origin/" + name : "";
     }
 
     // ── Remote traffic ─────────────────────────────────────────────────
