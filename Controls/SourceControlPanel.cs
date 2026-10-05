@@ -439,6 +439,7 @@ public sealed class SourceControlPanel : UserControl
         _graph = new CommitGraphView(_isDark) { CompactColumns = true };
         _graph.RowActivated += (_, _) => OpenGraphWindow();
         _graph.CreateTagRequested += (_, commit) => _ = CreateTagAsync(commit);
+        _graph.CheckoutRequested += (_, commit) => _ = CheckoutCommitAsync(commit);
 
         var graphScroller = new ScrollViewer
         {
@@ -1372,6 +1373,18 @@ public sealed class SourceControlPanel : UserControl
 
         await RunAsync(Loc.Get("CreatingTagStatus", "Creating tag..."),
             () => GitWriteService.CreateTagAsync(_repo, name.Trim(), commit.Hash));
+    }
+
+    private async Task CheckoutCommitAsync(GitCommit commit)
+    {
+        if (_repo.Length == 0 || _busy) return;
+
+        if (!await _host.Confirm(Loc.Get("CheckoutCommitConfirmTitle"),
+                string.Format(Loc.Get("CheckoutCommitConfirmFmt"), commit.ShortHash, commit.Subject)))
+            return;
+
+        await RunAsync(Loc.Get("SwitchingStatus", "Switching..."),
+            () => GitWriteService.CheckoutCommitAsync(_repo, commit.Hash));
     }
 
     private async void DeleteBranch(string branch)

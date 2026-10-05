@@ -221,6 +221,7 @@ public class CommitGraphPanel : UserControl
         _view.SelectionChanged += (_, _) => ShowSelection();
         _view.RowActivated += (_, _) => OpenSelectedFileDiff();
         _view.CreateTagRequested += (_, commit) => _ = CreateTagAsync(commit);
+        _view.CheckoutRequested += (_, commit) => _ = CheckoutCommitAsync(commit);
 
         _scroller = new ScrollViewer
         {
@@ -448,6 +449,19 @@ public class CommitGraphPanel : UserControl
 
         await RunGitAsync(Loc.Get("CreatingTagStatus", "Creating tag..."),
             () => GitWriteService.CreateTagAsync(_repoRoot, name.Trim(), commit.Hash));
+    }
+
+    private async Task CheckoutCommitAsync(GitCommit commit)
+    {
+        // Moving the working tree is always confirmed: a detached HEAD is easy to lose work on.
+        if (_gitBusy || _confirm == null) return;
+        if (!await _confirm(Loc.Get("CheckoutCommitConfirmTitle"),
+                string.Format(CultureInfo.CurrentCulture, Loc.Get("CheckoutCommitConfirmFmt"),
+                    commit.ShortHash, commit.Subject)))
+            return;
+
+        await RunGitAsync(Loc.Get("SwitchingStatus", "Switching..."),
+            () => GitWriteService.CheckoutCommitAsync(_repoRoot, commit.Hash));
     }
 
     /// <summary>

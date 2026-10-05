@@ -228,6 +228,22 @@ public static class GitWriteService
         });
     }
 
+    /// <summary>
+    /// Checks out one commit as a detached HEAD. Like <see cref="CheckoutBranchAsync"/> it uses
+    /// `switch`, so conflicting local changes make it refuse instead of being carried along.
+    /// </summary>
+    public static Task<GitResult> CheckoutCommitAsync(string repoRoot, string commitHash)
+    {
+        return Task.Run(() =>
+        {
+            if (!Usable(repoRoot)) return GitResult.Failed("not a repository");
+            if (string.IsNullOrWhiteSpace(commitHash) || commitHash.StartsWith("-", StringComparison.Ordinal))
+                return GitResult.Failed("invalid commit");
+
+            return GitCli.Execute(repoRoot, null, "switch", "--detach", commitHash);
+        });
+    }
+
     /// <summary>Creates a branch at HEAD and switches to it.</summary>
     public static Task<GitResult> CreateBranchAsync(string repoRoot, string branch)
     {

@@ -5,6 +5,7 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Snipyard.Services;
 
@@ -153,7 +154,22 @@ public sealed class CommitGraphView : Control
         {
             if (SelectedCommit is { } commit) CreateTagRequested?.Invoke(this, commit);
         };
-        _rowContextMenu = new ContextMenu { ItemsSource = new object[] { createTag } };
+        var checkout = new MenuItem { Header = Loc.Get("CheckoutCommitAction", "Checkout") };
+        checkout.Click += (_, _) =>
+        {
+            if (SelectedCommit is { } commit) CheckoutRequested?.Invoke(this, commit);
+        };
+        var copyHash = new MenuItem { Header = Loc.Get("CopyCommitHashAction", "Copy Commit Hash") };
+        copyHash.Click += async (_, _) =>
+        {
+            if (SelectedCommit is not { } commit) return;
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard != null) await clipboard.SetTextAsync(commit.Hash);
+        };
+        _rowContextMenu = new ContextMenu
+        {
+            ItemsSource = new object[] { checkout, createTag, new Separator(), copyHash },
+        };
     }
 
     private static IBrush[] MakeBrushes()
@@ -180,6 +196,9 @@ public sealed class CommitGraphView : Control
 
     /// <summary>Raised when "Create Tag..." is picked from a commit row's right-click menu.</summary>
     public event EventHandler<GitCommit>? CreateTagRequested;
+
+    /// <summary>Raised when "Checkout" is picked from a commit row's right-click menu.</summary>
+    public event EventHandler<GitCommit>? CheckoutRequested;
 
     /// <summary>True when the selected row is the working tree rather than a commit.</summary>
     public bool IsUncommittedSelected => _showUncommitted && _selected == 0;
