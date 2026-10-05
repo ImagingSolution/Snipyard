@@ -4343,6 +4343,17 @@ internal partial class AppShell : UserControl, IDockOwner
                 StatusBranchName.Text = branch;
                 BtnBranchSwitch.IsVisible = true;
             }
+            else
+            {
+                // A checked-out commit has no branch name; say so rather than show nothing,
+                // and keep the switcher so getting back onto a branch is one click away.
+                var head = GitCli.Execute(_projectFolder, null, "rev-parse", "--short", "--verify", "-q", "HEAD");
+                if (head.Ok && head.StdOut.Trim().Length > 0)
+                {
+                    StatusBranchName.Text = Loc.Get("DetachedHeadFmt").Replace("{0}", head.StdOut.Trim());
+                    BtnBranchSwitch.IsVisible = true;
+                }
+            }
         }
         catch { }
 

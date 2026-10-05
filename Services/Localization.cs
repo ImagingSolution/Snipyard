@@ -940,6 +940,7 @@ public static class Loc
         ["CheckoutCommitAction"] = new() { ["English"] = "Checkout", ["日本語"] = "チェックアウト" },
         ["CheckoutCommitConfirmTitle"] = new() { ["English"] = "Check out this commit?", ["日本語"] = "このコミットをチェックアウトしますか？" },
         ["CheckoutCommitConfirmFmt"] = new() { ["English"] = "Switch the working tree to commit {0} \"{1}\"?\n\nHEAD will be detached (not on any branch). To keep new work made here, create a branch afterwards.", ["日本語"] = "作業ツリーをコミット {0}「{1}」に切り替えますか？\n\nHEAD はどのブランチにも属さない状態（detached HEAD）になります。ここで作業を続ける場合は、あとでブランチを作成してください。" },
+        ["DetachedHeadFmt"] = new() { ["English"] = "detached HEAD ({0})", ["日本語"] = "detached HEAD ({0})" },
         ["CopyCommitHashAction"] = new() { ["English"] = "Copy Commit Hash", ["日本語"] = "コミットハッシュをコピー" },
         ["CreateTagAction"] = new() { ["English"] = "Create Tag...", ["日本語"] = "タグの作成..." },
         ["CreateTagPrompt"] = new() { ["English"] = "Tag name", ["日本語"] = "タグ名" },

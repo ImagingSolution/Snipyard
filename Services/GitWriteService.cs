@@ -9,6 +9,12 @@ namespace Snipyard.Services;
 public sealed record BranchState(string Current, int Ahead, int Behind, bool HasUpstream)
 {
     public static readonly BranchState None = new("", 0, 0, false);
+
+    /// <summary>
+    /// The short hash HEAD points at when it is detached (on no branch), otherwise empty. Lets
+    /// the panel say "detached" instead of showing a bare dash that reads like "no repository".
+    /// </summary>
+    public string DetachedAt { get; init; } = "";
 }
 
 /// <summary>
@@ -283,7 +289,15 @@ public static class GitWriteService
             if (!Usable(repoRoot)) return BranchState.None;
 
             var current = GitCli.Run(repoRoot, "branch", "--show-current").Trim();
-            if (current.Length == 0) return BranchState.None;
+            if (current.Length == 0)
+            {
+                // No branch name: either a detached HEAD or a repository with no commit yet.
+                // Only the former resolves HEAD to a commit.
+                var head = GitCli.Execute(repoRoot, null, "rev-parse", "--short", "--verify", "-q", "HEAD");
+                return head.Ok && head.StdOut.Trim().Length > 0
+                    ? BranchState.None with { DetachedAt = head.StdOut.Trim() }
+                    : BranchState.None;
+            }
 
             var upstream = GitCli.Execute(repoRoot, null,
                 "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");

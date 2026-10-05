@@ -735,7 +735,9 @@ public sealed class SourceControlPanel : UserControl
         ToolTip.SetTip(_btnPush, ActionTip("PushAction", "Push", "PushTooltip",
             _branch.Ahead > 0 ? " ↑" + _branch.Ahead : ""));
 
-        _btnBranch.Content = hasBranch ? _branch.Current : "-";
+        _btnBranch.Content = hasBranch ? _branch.Current
+            : _branch.DetachedAt.Length > 0 ? Loc.Get("DetachedHeadFmt").Replace("{0}", _branch.DetachedAt)
+            : "-";
         _lblTracking.Text = !hasBranch ? ""
             : !_branch.HasUpstream ? Loc.Get("NoUpstream", "not published")
             : _branch.Ahead == 0 && _branch.Behind == 0 ? Loc.Get("UpToDate", "up to date")
