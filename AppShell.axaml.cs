@@ -1060,8 +1060,22 @@ internal partial class AppShell : UserControl, IDockOwner
             HorizontalContentAlignment = HorizontalAlignment.Center,
         };
 
+        // A long git error (dozens of file paths) would grow the window past the
+        // screen and push its title bar and close button out of reach, so the text
+        // scrolls once it fills most of the screen and the OK button stays visible.
+        var screen = HostWindow.Screens.ScreenFromWindow(HostWindow);
+        double scale = screen?.Scaling ?? 1.0;
+        double maxTextHeight = Math.Max(120, (screen?.WorkingArea.Height ?? 900) / scale * 0.8 - 120);
+        var scroller = new ScrollViewer
+        {
+            Content = text,
+            MaxHeight = maxTextHeight,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+        };
+
         var panel = new StackPanel { Spacing = 18, Margin = new Thickness(22, 20) };
-        panel.Children.Add(text);
+        panel.Children.Add(scroller);
         panel.Children.Add(ok);
 
         var dialog = new Window
