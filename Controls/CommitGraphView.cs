@@ -17,7 +17,7 @@ namespace Snipyard.Controls;
 /// so several hundred rows scroll without a visual per cell; only rows inside the viewport are
 /// painted. Read-only -- it selects and reports, and never touches the repository.
 /// </summary>
-public sealed class CommitGraphView : Control
+public sealed partial class CommitGraphView : Control
 {
     public const double RowHeight = 24;
 

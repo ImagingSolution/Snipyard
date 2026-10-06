@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace Snipyard.Services;
 
@@ -986,6 +986,21 @@ public static class Loc
         ["MemoryCountFmt"] = new() { ["English"] = "{0} notes", ["日本語"] = "{0} 件" },
         ["MemoryOpenFile"] = new() { ["English"] = "Open the file", ["日本語"] = "ファイルを開く" },
         ["MemoryModifiedFmt"] = new() { ["English"] = "Updated {0}", ["日本語"] = "更新 {0}" },
+        // -- G1 working tree / stash / amend --
+        // (keys for this group go directly below this line)
+
+        // -- G2 commit graph operations --
+        // (keys for this group go directly below this line)
+
+        // -- G3 branch operations --
+        // (keys for this group go directly below this line)
+
+        // -- G4 GitHub pull requests --
+        // (keys for this group go directly below this line)
+
+        // -- G5 GitHub actions / issues / releases --
+        // (keys for this group go directly below this line)
+
     };
 
     public static string Get(string key)

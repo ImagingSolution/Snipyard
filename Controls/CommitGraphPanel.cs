@@ -26,7 +26,7 @@ namespace Snipyard.Controls;
 /// and arranged by the same layout code as terminal and editor windows, so it has no chrome,
 /// no preferred size, and no screen of its own to fit into.
 /// </summary>
-public class CommitGraphPanel : UserControl
+public partial class CommitGraphPanel : UserControl
 {
     private const int PageSize = 500;
 

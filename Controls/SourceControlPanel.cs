@@ -50,7 +50,7 @@ public sealed record SourceControlHost(
 /// the AI" rather than a hand-written merge. When git or gh refuses, its own words are shown
 /// unedited, because the reason is usually the instruction.
 /// </summary>
-public sealed class SourceControlPanel : UserControl
+public sealed partial class SourceControlPanel : UserControl
 {
     /// <summary>How much history the embedded graph shows. The window is there for more.</summary>
     private const int GraphLimit = 200;
