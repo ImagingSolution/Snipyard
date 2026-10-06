@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Snipyard.Services;
@@ -49,6 +50,8 @@ public class CommitGraphPanel : UserControl
     private readonly Button _fetchButton;
     private readonly Button _pullButton;
     private readonly Button _pushButton;
+    private readonly Button _checkoutButton;
+    private readonly Button _copyHashButton;
     private readonly TextBlock _statusText;
     private readonly Grid _header;
 
@@ -168,6 +171,21 @@ public class CommitGraphPanel : UserControl
         _pushButton = ToolButton(Loc.Get("PushAction", "Push"), Loc.Get("PushTooltip", ""));
         _pushButton.Click += (_, _) => OnPush();
 
+        // The row menu's Checkout, for the commit the detail pane is showing.
+        _checkoutButton = ToolButton(Loc.Get("CheckoutCommitAction", "Checkout"),
+            Loc.Get("CheckoutCommitTooltip", ""));
+        _checkoutButton.Click += (_, _) =>
+        {
+            if (_view.SelectedCommit is { } commit) _ = CheckoutCommitAsync(commit);
+        };
+
+        var checkoutDivider = new Border
+        {
+            Width = 1,
+            Margin = new Thickness(4, 3, 10, 3),
+            Background = new SolidColorBrush(Divider()),
+        };
+
         var toolbarDivider = new Border
         {
             Width = 1,
@@ -194,6 +212,8 @@ public class CommitGraphPanel : UserControl
         toolbar.Children.Add(_fetchButton);
         toolbar.Children.Add(_pullButton);
         toolbar.Children.Add(_pushButton);
+        toolbar.Children.Add(checkoutDivider);
+        toolbar.Children.Add(_checkoutButton);
         toolbar.Children.Add(_statusText);
         ApplyRemoteState();
 
@@ -218,7 +238,7 @@ public class CommitGraphPanel : UserControl
 
         // -- Graph list --
         _view = new CommitGraphView(_isDark);
-        _view.SelectionChanged += (_, _) => ShowSelection();
+        _view.SelectionChanged += (_, _) => { ShowSelection(); ApplyRemoteState(); };
         _view.RowActivated += (_, _) => OpenSelectedFileDiff();
         _view.CreateTagRequested += (_, commit) => _ = CreateTagAsync(commit);
         _view.CheckoutRequested += (_, commit) => _ = CheckoutCommitAsync(commit);
@@ -247,7 +267,36 @@ public class CommitGraphPanel : UserControl
             Spacing = 16,
             Margin = new Thickness(12, 8, 12, 6),
         };
-        metaRow.Children.Add(_detailHash);
+        // Copies the full hash shown beside it; briefly reads "Copied" so the click is seen.
+        _copyHashButton = new Button
+        {
+            Content = Loc.Get("Copy", "Copy"),
+            FontSize = 11,
+            Padding = new Thickness(6, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(_isDark ? Color.FromRgb(50, 50, 52) : Color.FromRgb(230, 230, 235)),
+            Foreground = new SolidColorBrush(TextColor()),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(3),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            IsVisible = false,
+        };
+        ToolTip.SetTip(_copyHashButton, Loc.Get("CopyCommitHashAction", "Copy Commit Hash"));
+        _copyHashButton.Click += async (_, _) =>
+        {
+            if (_detailHash.Text is not { Length: > 0 } hash) return;
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard == null) return;
+            await clipboard.SetTextAsync(hash);
+            _copyHashButton.Content = Loc.Get("Copied", "Copied");
+            await Task.Delay(1200);
+            _copyHashButton.Content = Loc.Get("Copy", "Copy");
+        };
+
+        var hashCell = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        hashCell.Children.Add(_detailHash);
+        hashCell.Children.Add(_copyHashButton);
+        metaRow.Children.Add(hashCell);
         metaRow.Children.Add(_detailAuthor);
         metaRow.Children.Add(_detailDate);
 
@@ -518,6 +567,10 @@ public class CommitGraphPanel : UserControl
         // Without somewhere to ask, push is not on offer at all, and the button says so by
         // being dead rather than by doing nothing when pressed.
         _pushButton.IsEnabled = !_gitBusy && _confirm != null;
+
+        // Only a real commit can be checked out; the uncommitted row and an empty selection
+        // leave nothing to move to.
+        _checkoutButton.IsEnabled = !_gitBusy && _confirm != null && _view?.SelectedCommit != null;
     }
 
     // -- Detail pane ----------------------------------------------------
@@ -525,6 +578,7 @@ public class CommitGraphPanel : UserControl
     private void ShowSelection()
     {
         int generation = ++_detailGeneration;
+        _copyHashButton.IsVisible = false;
 
         _fileRows.Children.Clear();
         _fileActions.Clear();
@@ -554,6 +608,7 @@ public class CommitGraphPanel : UserControl
         }
 
         _detailHash.Text = commit.Hash;
+        _copyHashButton.IsVisible = true;
         _detailAuthor.Text = string.IsNullOrEmpty(commit.AuthorEmail)
             ? commit.Author
             : $"{commit.Author} <{commit.AuthorEmail}>";
