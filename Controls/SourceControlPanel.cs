@@ -170,6 +170,7 @@ public sealed partial class SourceControlPanel : UserControl
         _settings = settings;
         _cli = cli;
         _host = host;
+        InitWorkingTree();
 
         // ── Toolbar ──
 
@@ -343,6 +344,7 @@ public sealed partial class SourceControlPanel : UserControl
         var commitStack = new StackPanel { Spacing = 6 };
         commitStack.Children.Add(_txtMessage);
         commitStack.Children.Add(draftRow);
+        commitStack.Children.Add(_chkAmend);
         commitStack.Children.Add(commitRow);
 
         _commitBox = new Border
@@ -518,6 +520,7 @@ public sealed partial class SourceControlPanel : UserControl
         root.Children.Add(_status);
         root.Children.Add(_conflictBanner);
         root.Children.Add(_prSection);
+        root.Children.Add(_stashHost);
         root.Children.Add(_commitBox);
         root.Children.Add(_centre);
 
@@ -687,6 +690,7 @@ public sealed partial class SourceControlPanel : UserControl
         if (branchTask.IsCompletedSuccessfully) BranchStateRead?.Invoke(this, (repo, _branch));
 
         _ = RefreshPullRequestsAsync(generation);
+        _ = RefreshWorkingTreeAsync(generation);
     }
 
     /// <summary>The result of a reading that finished, or null for one that faulted.</summary>
@@ -777,6 +781,8 @@ public sealed partial class SourceControlPanel : UserControl
                 && _operation != RepoOperation.None;
             _btnConflictAbort.IsEnabled = idle && _operation != RepoOperation.None;
         }
+
+        ApplyWorkingTreeState();
     }
 
     private void BuildChangesList()
@@ -796,16 +802,16 @@ public sealed partial class SourceControlPanel : UserControl
 
         if (staged.Count > 0)
         {
-            _changesList.Children.Add(SectionHeading(
-                string.Format(Loc.Get("StagedSectionFmt", "Staged ({0})"), staged.Count)));
+            _changesList.Children.Add(WithDiscardAll(SectionHeading(
+                string.Format(Loc.Get("StagedSectionFmt", "Staged ({0})"), staged.Count)), true));
             foreach (var change in staged)
                 _changesList.Children.Add(BuildChangeRow(change));
         }
 
         if (unstaged.Count > 0)
         {
-            _changesList.Children.Add(SectionHeading(
-                string.Format(Loc.Get("UnstagedSectionFmt", "Changes ({0})"), unstaged.Count)));
+            _changesList.Children.Add(WithDiscardAll(SectionHeading(
+                string.Format(Loc.Get("UnstagedSectionFmt", "Changes ({0})"), unstaged.Count)), staged.Count == 0));
             foreach (var change in unstaged)
                 _changesList.Children.Add(BuildChangeRow(change));
         }
@@ -929,7 +935,7 @@ public sealed partial class SourceControlPanel : UserControl
         var ignore = new MenuItem { Header = Loc.Get("IgnoreFileAction", "Add to ignore list") };
         ignore.Click += (_, _) => _ = IgnorePathsAsync(repo, new List<string> { change.Path });
 
-        row.ContextMenu = new ContextMenu { ItemsSource = new[] { comment, ignore } };
+        row.ContextMenu = new ContextMenu { ItemsSource = new[] { comment, ignore, DiscardMenuItem(change) } };
 
         return row;
     }
@@ -1945,6 +1951,8 @@ public sealed partial class SourceControlPanel : UserControl
     private async Task<bool> CommitAsync()
     {
         if (_repo.Length == 0 || _busy) return false;
+
+        if (_chkAmend.IsChecked == true) return await AmendCommitAsync();
 
         if (!_changes.Any(c => c.Staged))
         {
