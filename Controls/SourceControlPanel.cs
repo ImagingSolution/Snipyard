@@ -520,6 +520,7 @@ public sealed partial class SourceControlPanel : UserControl
         root.Children.Add(_status);
         root.Children.Add(_conflictBanner);
         root.Children.Add(_prSection);
+        AddGitHubExtraSections(root);
         root.Children.Add(_stashHost);
         root.Children.Add(_commitBox);
         root.Children.Add(_centre);
@@ -2048,6 +2049,7 @@ public sealed partial class SourceControlPanel : UserControl
 
         bool show = _ghReady == true && _onGitHub;
         _prSection.IsVisible = show;
+        SetGitHubExtrasVisible(show);
         ApplyState();
         if (!show) return;
 
@@ -2057,6 +2059,7 @@ public sealed partial class SourceControlPanel : UserControl
         _pullRequests = list;
         _prSection.Title = string.Format(Loc.Get("PullRequestsFmt", "Pull requests ({0})"), list.Count);
         BuildPullRequestList();
+        _ = RefreshGitHubExtrasAsync(generation);
     }
 
     private void BuildPullRequestList()
