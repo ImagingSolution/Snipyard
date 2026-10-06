@@ -19,7 +19,7 @@ public sealed partial class SourceControlPanel
     private Button BuildPullRequestMenuButton(PullRequestInfo pr)
     {
         var button = GlyphButton("⋯", Loc.Get("PrMoreActions", "More"), () => { });
-        var flyout = new MenuFlyout { Placement = PlacementMode.Bottom };
+        var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedRight };
 
         flyout.Items.Add(PrMenuItem(Loc.Get("PrMergeAction", "Merge..."), () => MergePullRequest(pr)));
         flyout.Items.Add(PrMenuItem(Loc.Get("PrRequestChangesAction", "Request changes..."), () => RequestChangesOnPullRequest(pr)));

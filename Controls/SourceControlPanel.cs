@@ -560,6 +560,7 @@ public sealed partial class SourceControlPanel : UserControl
         _scanCts?.Cancel();
         _folder = next;
         _repo = nextRepo;
+        UpdateRepoWatcher();
         _changes = new List<GitChange>();
         _branch = BranchState.None;
         _operation = RepoOperation.None;
@@ -582,6 +583,7 @@ public sealed partial class SourceControlPanel : UserControl
     public void OnPanelShown()
     {
         _panelShown = true;
+        UpdateRepoWatcher();
         _ = RefreshAsync();
 
         if (_fetchTimer == null)
@@ -605,6 +607,7 @@ public sealed partial class SourceControlPanel : UserControl
     public void OnPanelHidden()
     {
         _panelShown = false;
+        UpdateRepoWatcher();
         _fetchTimer?.Stop();
         _prTimer?.Stop();
     }
@@ -1300,7 +1303,7 @@ public sealed partial class SourceControlPanel : UserControl
         var inWorktrees = await WorktreeService.GetBranchesInOtherWorktreesAsync(repo);
         if (!string.Equals(repo, _repo, StringComparison.OrdinalIgnoreCase)) return;
 
-        var flyout = new MenuFlyout { Placement = PlacementMode.Bottom };
+        var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
         foreach (var branch in branches)
         {
             var name = branch;
@@ -1434,7 +1437,7 @@ public sealed partial class SourceControlPanel : UserControl
             return;
         }
 
-        var flyout = new MenuFlyout { Placement = PlacementMode.Bottom };
+        var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
         foreach (var branch in others)
         {
             var name = branch;
