@@ -1028,6 +1028,17 @@ public static class Loc
 
         // -- G3 branch operations --
         // (keys for this group go directly below this line)
+        ["RenameBranch"] = new() { ["English"] = "Rename branch...", ["日本語"] = "ブランチ名を変更..." },
+        ["RenameBranchPromptFmt"] = new() { ["English"] = "New name for \"{0}\"", ["日本語"] = "「{0}」の新しい名前" },
+        ["RenameBranchInvalidFmt"] = new() { ["English"] = "\"{0}\" is not a valid branch name.", ["日本語"] = "「{0}」はブランチ名として使えません。" },
+        ["RenamingBranchStatus"] = new() { ["English"] = "Renaming...", ["日本語"] = "名前を変更中..." },
+        ["RenameBranchDoneUpstreamFmt"] = new() { ["English"] = "Renamed \"{0}\" to \"{1}\". The branch on the remote keeps its old name; push the new name to publish it.", ["日本語"] = "「{0}」を「{1}」に変更しました。リモート側のブランチ名は変わりません。新しい名前で送信すると公開できます。" },
+        ["ForceDeleteBranchTitle"] = new() { ["English"] = "Force delete branch", ["日本語"] = "ブランチの強制削除" },
+        ["ForceDeleteBranchFmt"] = new() { ["English"] = "\"{0}\" has {1} commit(s) that are not merged into the current branch. Deleting it anyway loses them for good (they can only be recovered through the reflog for a while). Force delete?", ["日本語"] = "「{0}」には現在のブランチに取り込まれていないコミットが {1} 件あります。強制削除すると、これらは失われます（しばらくは reflog からのみ復元できます）。強制削除しますか？" },
+        ["DeleteRemoteBranch"] = new() { ["English"] = "Delete remote branch...", ["日本語"] = "リモートブランチを削除..." },
+        ["DeleteRemoteBranchTitle"] = new() { ["English"] = "Delete remote branch", ["日本語"] = "リモートブランチの削除" },
+        ["DeleteRemoteBranchFmt"] = new() { ["English"] = "Delete the branch \"{1}\" on the remote \"{0}\"? This changes the shared repository and affects everyone who uses it. It cannot be undone from here.", ["日本語"] = "リモート「{0}」のブランチ「{1}」を削除しますか？ 共有リポジトリが変更され、使っている全員に影響します。ここからは元に戻せません。" },
+        ["DeletingRemoteBranchStatus"] = new() { ["English"] = "Deleting on the remote...", ["日本語"] = "リモートで削除中..." },
 
         // -- G4 GitHub pull requests --
         // (keys for this group go directly below this line)
