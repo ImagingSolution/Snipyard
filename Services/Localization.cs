@@ -1042,6 +1042,28 @@ public static class Loc
 
         // -- G4 GitHub pull requests --
         // (keys for this group go directly below this line)
+        ["PrMoreActions"] = new() { ["English"] = "More", ["日本語"] = "その他の操作" },
+        ["PrMergeAction"] = new() { ["English"] = "Merge...", ["日本語"] = "マージ..." },
+        ["PrRequestChangesAction"] = new() { ["English"] = "Request changes...", ["日本語"] = "変更を要求..." },
+        ["PrRequestChangesPrompt"] = new() { ["English"] = "What needs to change? (required)", ["日本語"] = "変更してほしい内容を入力してください（必須）" },
+        ["PrRequestChangesConfirm"] = new() { ["English"] = "Request changes on #{0}?", ["日本語"] = "#{0} に変更を要求しますか？" },
+        ["PrReviewingStatus"] = new() { ["English"] = "Sending the review...", ["日本語"] = "レビューを送信中..." },
+        ["PrCommentAction"] = new() { ["English"] = "Comment...", ["日本語"] = "コメント..." },
+        ["PrCommentPrompt"] = new() { ["English"] = "Comment on this pull request", ["日本語"] = "このプルリクエストにコメントします" },
+        ["PrCommentingStatus"] = new() { ["English"] = "Posting the comment...", ["日本語"] = "コメントを投稿中..." },
+        ["PrCheckoutAction"] = new() { ["English"] = "Check out this branch", ["日本語"] = "このブランチをチェックアウト" },
+        ["PrOpenRepoOnGitHub"] = new() { ["English"] = "Open repository on GitHub", ["日本語"] = "GitHub でリポジトリを開く" },
+        ["PrMergingStatus"] = new() { ["English"] = "Merging the pull request...", ["日本語"] = "プルリクエストをマージ中..." },
+        ["PrMergeWarnDraft"] = new() { ["English"] = "This pull request is still a draft.", ["日本語"] = "このプルリクエストはまだ下書きです。" },
+        ["PrMergeWarnChecks"] = new() { ["English"] = "Checks are failing: {0}", ["日本語"] = "失敗しているチェックがあります: {0}" },
+        ["PrMergeWarnPending"] = new() { ["English"] = "Checks have not finished yet.", ["日本語"] = "チェックがまだ完了していません。" },
+        ["PrMergeWarnChanges"] = new() { ["English"] = "Changes have been requested on this pull request.", ["日本語"] = "このプルリクエストには変更が要求されています。" },
+        ["PrMergeMethodLabel"] = new() { ["English"] = "Merge method", ["日本語"] = "マージ方式" },
+        ["PrMergeCommit"] = new() { ["English"] = "Merge commit", ["日本語"] = "マージコミットを作成" },
+        ["PrMergeSquash"] = new() { ["English"] = "Squash and merge", ["日本語"] = "スカッシュしてマージ" },
+        ["PrMergeRebase"] = new() { ["English"] = "Rebase and merge", ["日本語"] = "リベースしてマージ" },
+        ["PrMergeDeleteBranch"] = new() { ["English"] = "Delete the branch {0} afterwards", ["日本語"] = "マージ後にブランチ {0} を削除する" },
+        ["PrMergeConfirm"] = new() { ["English"] = "Merge", ["日本語"] = "マージする" },
 
         // -- G5 GitHub actions / issues / releases --
         // (keys for this group go directly below this line)
