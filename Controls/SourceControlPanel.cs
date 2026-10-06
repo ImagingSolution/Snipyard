@@ -1101,7 +1101,8 @@ public sealed class SourceControlPanel : UserControl
 
     private void OnPull() =>
         _ = RunAsync(Loc.Get("PullingStatus", "Pulling..."),
-            () => GitWriteService.PullRebaseAsync(_repo), quietOnConflict: true);
+            () => GitWriteService.PullOfferingStashAsync(_repo, _host.Confirm, _host.ShowMessage),
+            quietOnConflict: true);
 
     private async void OnPush()
     {
@@ -1348,10 +1349,11 @@ public sealed class SourceControlPanel : UserControl
                 string.Format(Loc.Get("SwitchBranchConfirmFmt"), branch)))
             return;
 
-        // git switch refuses on conflicting local changes rather than carrying them across, so
-        // a dirty tree surfaces as git's own message instead of silently moving the work.
+        // git switch refuses on conflicting local changes rather than carrying them across; the
+        // work is only moved when the user says yes to the stash offer.
         await RunAsync(Loc.Get("SwitchingStatus", "Switching..."),
-            () => GitWriteService.CheckoutBranchAsync(_repo, branch));
+            () => GitWriteService.SwitchOfferingStashAsync(_repo,
+                () => GitWriteService.CheckoutBranchAsync(_repo, branch), _host.Confirm, _host.ShowMessage));
     }
 
     private async void OnNewBranch()
@@ -1386,7 +1388,8 @@ public sealed class SourceControlPanel : UserControl
             return;
 
         await RunAsync(Loc.Get("SwitchingStatus", "Switching..."),
-            () => GitWriteService.CheckoutCommitAsync(_repo, commit.Hash));
+            () => GitWriteService.SwitchOfferingStashAsync(_repo,
+                () => GitWriteService.CheckoutCommitAsync(_repo, commit.Hash), _host.Confirm, _host.ShowMessage));
     }
 
     private async void DeleteBranch(string branch)

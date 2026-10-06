@@ -410,7 +410,8 @@ public class CommitGraphPanel : UserControl
 
     private void OnPull() =>
         _ = RunGitAsync(Loc.Get("PullingStatus", "Pulling..."),
-            () => GitWriteService.PullRebaseAsync(_repoRoot), quietOnConflict: true);
+            () => GitWriteService.PullOfferingStashAsync(_repoRoot, _confirm, _showMessage),
+            quietOnConflict: true);
 
     private async void OnPush()
     {
@@ -461,7 +462,8 @@ public class CommitGraphPanel : UserControl
             return;
 
         await RunGitAsync(Loc.Get("SwitchingStatus", "Switching..."),
-            () => GitWriteService.CheckoutCommitAsync(_repoRoot, commit.Hash));
+            () => GitWriteService.SwitchOfferingStashAsync(_repoRoot,
+                () => GitWriteService.CheckoutCommitAsync(_repoRoot, commit.Hash), _confirm, _showMessage));
     }
 
     /// <summary>

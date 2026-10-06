@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Snipyard.Services;
 
@@ -33,6 +34,29 @@ public static class GitErrorHints
                 if (gitMessage.Contains(needle, StringComparison.OrdinalIgnoreCase))
                     return string.Format(Loc.Get(key), Loc.Get("PullAction"), Loc.Get("PushAction"));
         return null;
+    }
+
+    /// <summary>Whether git refused because uncommitted edits would be overwritten.</summary>
+    public static bool IsLocalChanges(string gitMessage) =>
+        !string.IsNullOrEmpty(gitMessage)
+        && (gitMessage.Contains("Your local changes to the following files would be overwritten", StringComparison.OrdinalIgnoreCase)
+            || gitMessage.Contains("cannot pull with rebase: You have unstaged changes", StringComparison.OrdinalIgnoreCase)
+            || gitMessage.Contains("Your index contains uncommitted changes", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The indented file list git prints under "would be overwritten by ...:".</summary>
+    public static List<string> LocalChangeFiles(string gitMessage)
+    {
+        var files = new List<string>();
+        bool inList = false;
+        foreach (var raw in gitMessage.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.Contains("would be overwritten by", StringComparison.OrdinalIgnoreCase)) { inList = true; continue; }
+            if (!inList) continue;
+            if (line.Length == 0 || !char.IsWhiteSpace(line[0])) break;
+            files.Add(line.Trim());
+        }
+        return files;
     }
 
     /// <summary>

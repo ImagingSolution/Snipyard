@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Snipyard.Services;
@@ -450,14 +451,85 @@ public static class GitWriteService
     /// a single line, which is what makes the graph readable for people who are not going to
     /// untangle a merge bubble.
     /// </summary>
-    public static Task<GitResult> PullRebaseAsync(string repoRoot)
+    public static Task<GitResult> PullRebaseAsync(string repoRoot, bool autostash = false)
     {
         return Task.Run(() =>
         {
             if (!Usable(repoRoot)) return GitResult.Failed("not a repository");
 
-            return GitCli.ExecuteRemote(repoRoot, null, "pull", "--rebase");
+            return autostash
+                ? GitCli.ExecuteRemote(repoRoot, null, "pull", "--rebase", "--autostash")
+                : GitCli.ExecuteRemote(repoRoot, null, "pull", "--rebase");
         });
+    }
+
+    /// <summary>
+    /// Pulls, and when git refuses because uncommitted edits would be overwritten, offers to
+    /// set them aside for the pull and put them back afterwards (--autostash) instead of sending
+    /// the user to a terminal. A declined offer returns success so no error dialog follows.
+    /// When the edits cannot be put back cleanly git keeps them in the stash and says so; that
+    /// is surfaced through <paramref name="showMessage"/> because the pull itself succeeded.
+    /// </summary>
+    public static async Task<GitResult> PullOfferingStashAsync(string repoRoot,
+        Func<string, string, Task<bool>>? confirm, Action<string, string>? showMessage)
+    {
+        var result = await PullRebaseAsync(repoRoot);
+        if (result.Ok || confirm == null || !GitErrorHints.IsLocalChanges(result.Message)) return result;
+
+        if (!await ConfirmStashAsync(repoRoot, result.Message, "PullStashText", confirm))
+            return new GitResult(0, "", "");
+
+        var retry = await PullRebaseAsync(repoRoot, autostash: true);
+        if (retry.Ok && (retry.StdErr + retry.StdOut).Contains("autostash resulted in conflicts", StringComparison.OrdinalIgnoreCase))
+            showMessage?.Invoke(Loc.Get("PullStashTitle"), Loc.Get("PullStashKept"));
+        return retry;
+    }
+
+    /// <summary>
+    /// Runs a branch or commit switch, and when git refuses because uncommitted edits would be
+    /// overwritten, offers to carry them across: stash, switch, then pop on the new HEAD.
+    /// `git switch` has no --autostash, so the three steps are spelled out. A failed switch pops
+    /// the stash straight back onto the HEAD it came from, leaving the tree as it was.
+    /// </summary>
+    public static async Task<GitResult> SwitchOfferingStashAsync(string repoRoot, Func<Task<GitResult>> switchWork,
+        Func<string, string, Task<bool>>? confirm, Action<string, string>? showMessage)
+    {
+        var result = await switchWork();
+        if (result.Ok || confirm == null || !GitErrorHints.IsLocalChanges(result.Message)) return result;
+
+        if (!await ConfirmStashAsync(repoRoot, result.Message, "SwitchStashText", confirm))
+            return new GitResult(0, "", "");
+
+        var stash = await Task.Run(() =>
+            GitCli.Execute(repoRoot, null, "stash", "push", "-m", "Snipyard: carried across a switch"));
+        if (!stash.Ok) return stash;
+        // Nothing was stashed: popping now would apply some older, unrelated entry.
+        if ((stash.StdOut + stash.StdErr).Contains("No local changes to save", StringComparison.OrdinalIgnoreCase))
+            return result;
+
+        var retry = await switchWork();
+        var pop = await Task.Run(() => GitCli.Execute(repoRoot, null, "stash", "pop"));
+        if (!retry.Ok) return retry;
+
+        // A pop that cannot apply cleanly leaves conflict markers and keeps the stash entry.
+        if (!pop.Ok)
+            showMessage?.Invoke(Loc.Get("PullStashTitle"), Loc.Get("SwitchStashKept"));
+        return retry;
+    }
+
+    /// <summary>The "set your edits aside?" question, listing the files git named.</summary>
+    private static async Task<bool> ConfirmStashAsync(string repoRoot, string gitMessage, string textKey,
+        Func<string, string, Task<bool>> confirm)
+    {
+        // "cannot pull with rebase: You have unstaged changes" names no files, so ask git.
+        var files = GitErrorHints.LocalChangeFiles(gitMessage);
+        if (files.Count == 0)
+            files = (await Task.Run(() => GitCli.Run(repoRoot, "diff", "--name-only", "HEAD")))
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        var list = files.Count == 0 ? "" : Environment.NewLine + Environment.NewLine
+            + string.Join(Environment.NewLine, files.Take(15).Select(f => "  " + f))
+            + (files.Count > 15 ? Environment.NewLine + "  ..." : "");
+        return await confirm(Loc.Get("PullStashTitle"), Loc.Get(textKey) + list);
     }
 
     // ── Branch work ────────────────────────────────────────────────────
