@@ -2054,6 +2054,7 @@ public sealed partial class SourceControlPanel : UserControl
     private void BuildPullRequestList()
     {
         _prList.Children.Clear();
+        _prList.Children.Add(BuildRepoLinkRow());
 
         if (_pullRequests.Count == 0)
         {
@@ -2134,7 +2135,7 @@ public sealed partial class SourceControlPanel : UserControl
         Grid.SetColumn(meta, 0);
         Grid.SetRow(meta, 1);
 
-        var actions = Row(feedback, approve, open);
+        var actions = Row(feedback, approve, open, BuildPullRequestMenuButton(pr));
         actions.Margin = new Thickness(6, 0, 0, 0);
         actions.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(actions, 1);
