@@ -631,6 +631,8 @@ public static class Loc
         ["ConflictCountFmt"] = new() { ["English"] = "{0} file(s) conflict", ["日本語"] = "{0} 件のファイルが衝突しています" },
         ["RebaseInProgress"] = new() { ["English"] = "A pull is unfinished", ["日本語"] = "取り込みが途中で止まっています" },
         ["MergeInProgress"] = new() { ["English"] = "A merge is unfinished", ["日本語"] = "マージが途中で止まっています" },
+        ["CherryPickInProgress"] = new() { ["English"] = "A cherry-pick is unfinished", ["日本語"] = "チェリーピックが途中で止まっています" },
+        ["RevertInProgress"] = new() { ["English"] = "A revert is unfinished", ["日本語"] = "リバートが途中で止まっています" },
         ["AskAiAction"] = new() { ["English"] = "Ask the AI", ["日本語"] = "AIに相談" },
         ["ContinueAction"] = new() { ["English"] = "Continue", ["日本語"] = "続行" },
         ["AbortAction"] = new() { ["English"] = "Abort", ["日本語"] = "中止" },

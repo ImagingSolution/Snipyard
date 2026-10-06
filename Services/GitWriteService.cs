@@ -42,6 +42,8 @@ public enum RepoOperation
     None,
     Rebase,
     Merge,
+    CherryPick,
+    Revert,
 }
 
 /// <summary>
@@ -604,6 +606,14 @@ public static class GitWriteService
                 Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
                 return RepoOperation.Rebase;
 
+            // A stopped cherry-pick or revert also leaves no MERGE_HEAD, so each is read by its
+            // own marker; the commit graph starts both.
+            if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
+                return RepoOperation.CherryPick;
+
+            if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
+                return RepoOperation.Revert;
+
             if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
                 return RepoOperation.Merge;
 
@@ -622,6 +632,8 @@ public static class GitWriteService
             {
                 RepoOperation.Rebase => GitCli.Execute(repoRoot, null, "rebase", "--abort"),
                 RepoOperation.Merge => GitCli.Execute(repoRoot, null, "merge", "--abort"),
+                RepoOperation.CherryPick => GitCli.Execute(repoRoot, null, "cherry-pick", "--abort"),
+                RepoOperation.Revert => GitCli.Execute(repoRoot, null, "revert", "--abort"),
                 _ => GitResult.Failed("nothing in progress"),
             };
         });
@@ -641,6 +653,8 @@ public static class GitWriteService
             {
                 RepoOperation.Rebase => GitCli.Execute(repoRoot, null, "-c", "core.editor=true", "rebase", "--continue"),
                 RepoOperation.Merge => GitCli.Execute(repoRoot, null, "-c", "core.editor=true", "merge", "--continue"),
+                RepoOperation.CherryPick => GitCli.Execute(repoRoot, null, "-c", "core.editor=true", "cherry-pick", "--continue"),
+                RepoOperation.Revert => GitCli.Execute(repoRoot, null, "-c", "core.editor=true", "revert", "--continue"),
                 _ => GitResult.Failed("nothing in progress"),
             };
         });

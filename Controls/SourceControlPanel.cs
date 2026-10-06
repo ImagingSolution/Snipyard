@@ -776,8 +776,13 @@ public sealed partial class SourceControlPanel : UserControl
         {
             _lblConflicts.Text = _conflicts.Count > 0
                 ? string.Format(Loc.Get("ConflictCountFmt", "{0} file(s) conflict"), _conflicts.Count)
-                : Loc.Get(_operation == RepoOperation.Rebase ? "RebaseInProgress" : "MergeInProgress",
-                    "An operation is unfinished");
+                : Loc.Get(_operation switch
+                    {
+                        RepoOperation.Rebase => "RebaseInProgress",
+                        RepoOperation.CherryPick => "CherryPickInProgress",
+                        RepoOperation.Revert => "RevertInProgress",
+                        _ => "MergeInProgress",
+                    }, "An operation is unfinished");
             _btnConflictAsk.IsEnabled = idle && _conflicts.Count > 0;
             _btnConflictContinue.IsEnabled = idle && _conflicts.Count == 0
                 && _operation != RepoOperation.None;
@@ -1489,9 +1494,13 @@ public sealed partial class SourceControlPanel : UserControl
     {
         if (_conflicts.Count == 0) return;
 
-        string finish = _operation == RepoOperation.Rebase
-            ? "git rebase --continue"
-            : "git merge --continue";
+        string finish = _operation switch
+        {
+            RepoOperation.Rebase => "git rebase --continue",
+            RepoOperation.CherryPick => "git cherry-pick --continue",
+            RepoOperation.Revert => "git revert --continue",
+            _ => "git merge --continue",
+        };
 
         var files = string.Join(", ", _conflicts);
         var sb = new StringBuilder();
