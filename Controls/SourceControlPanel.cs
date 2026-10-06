@@ -1330,6 +1330,7 @@ public sealed partial class SourceControlPanel : UserControl
             });
         }
 
+        await AddBranchExtraItemsAsync(flyout, branches, current);
         flyout.ShowAt(_btnBranch);
     }
 
@@ -1401,8 +1402,7 @@ public sealed partial class SourceControlPanel : UserControl
                     branch)))
             return;
 
-        await RunAsync(Loc.Get("DeletingBranchStatus", "Deleting..."),
-            () => GitWriteService.DeleteBranchAsync(_repo, branch));
+        await DeleteLocalBranchAsync(branch);
     }
 
     private async void OnMerge()
