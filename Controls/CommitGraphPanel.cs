@@ -214,6 +214,7 @@ public partial class CommitGraphPanel : UserControl
         toolbar.Children.Add(_pushButton);
         toolbar.Children.Add(checkoutDivider);
         toolbar.Children.Add(_checkoutButton);
+        toolbar.Children.Add(CreateSearchBox());
         toolbar.Children.Add(_statusText);
         ApplyRemoteState();
 
@@ -242,6 +243,7 @@ public partial class CommitGraphPanel : UserControl
         _view.RowActivated += (_, _) => OpenSelectedFileDiff();
         _view.CreateTagRequested += (_, commit) => _ = CreateTagAsync(commit);
         _view.CheckoutRequested += (_, commit) => _ = CheckoutCommitAsync(commit);
+        InitGraphOperations();
 
         _scroller = new ScrollViewer
         {
@@ -435,12 +437,12 @@ public partial class CommitGraphPanel : UserControl
             var commits = logTask.Result;
             _workingTree = changesTask.Result;
 
-            _view.SetGraph(CommitGraphLayout.Build(commits), _workingTree.Count > 0, keepSelection);
-            _header.Margin = new Thickness(_view.GraphWidth, 0, 0, 0);
+            ApplyGraph(commits, keepSelection);
 
             _statusText.Text = commits.Count == 0
                 ? Loc.Get("GraphNoCommits", "No commits to show")
                 : Format(Loc.Get("GraphCommitCountFmt", "{0} commits"), commits.Count);
+            if (_filterText.Length > 0) UpdateFilterStatus();
 
             // A short page means the log ran out, so there is nothing further to fetch.
             _loadMoreButton.IsEnabled = commits.Count >= _limit;

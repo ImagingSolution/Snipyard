@@ -442,6 +442,7 @@ public sealed partial class SourceControlPanel : UserControl
         _graph.RowActivated += (_, _) => OpenGraphWindow();
         _graph.CreateTagRequested += (_, commit) => _ = CreateTagAsync(commit);
         _graph.CheckoutRequested += (_, commit) => _ = CheckoutCommitAsync(commit);
+        InitGraphOperations();
 
         var graphScroller = new ScrollViewer
         {

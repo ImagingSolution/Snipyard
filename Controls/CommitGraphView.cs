@@ -170,6 +170,7 @@ public sealed partial class CommitGraphView : Control
         {
             ItemsSource = new object[] { checkout, createTag, new Separator(), copyHash },
         };
+        InitOperations();
     }
 
     private static IBrush[] MakeBrushes()
@@ -449,6 +450,7 @@ public sealed partial class CommitGraphView : Control
 
     private void DrawEdges(DrawingContext context, int firstRow, int lastRow, double totalHeight)
     {
+        if (_hideLines) return;
         for (int e = 0; e < _graph.Edges.Count; e++)
         {
             var edge = _graph.Edges[e];
