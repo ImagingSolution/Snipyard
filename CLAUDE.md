@@ -28,10 +28,11 @@ everyone, since GitHub always serves the newest release as "latest" regardless
 of assets.
 
 The app was called Claucraft until the rename, and builds from before it look
-for an asset named `Claucraft.exe`. During the transition every release also
-carries the same binary under that name (`Claucraft.exe`), or those installs
-never see another update. The current updater prefers `Snipyard.exe` and
-accepts `Claucraft.exe`.
+for an asset named `Claucraft.exe`. The transition period, when every release
+also carried a `Claucraft.exe` copy, is over (ended 2026-10-08 at the user's
+request): releases carry `Snipyard.exe` only. Pre-rename installs no longer
+see new updates. The current updater still accepts `Claucraft.exe`, but do not
+upload one.
 
 Steps, every time:
 
@@ -42,8 +43,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
     -p:DebugType=none -o ./publish-single     # (or run publish.bat)
 git add build.number && git commit -m "..."   # commit the bumped counter
 git push
-cp ./publish-single/Snipyard.exe ./publish-single/Claucraft.exe   # transition: old-name copy
-gh release create vX.Y.Z ./publish-single/Snipyard.exe ./publish-single/Claucraft.exe \
+gh release create vX.Y.Z ./publish-single/Snipyard.exe \
     --title vX.Y.Z --notes "..."
 ```
 
