@@ -4938,11 +4938,14 @@ public partial class TerminalControl : Control, IDisposable
                     MaxWidth = 440,
                 };
                 var send = MakeChoiceButton(Services.Loc.Get("PlanSendFeedback", "Send"), textOption.Label, null, false);
-                void SendText()
+                bool SendText()
                 {
                     var text = box.Text?.Trim();
-                    if (!string.IsNullOrEmpty(text)) ChooseOption(prompt, textOption, text);
+                    if (string.IsNullOrEmpty(text)) return false;
+                    ChooseOption(prompt, textOption, text);
+                    return true;
                 }
+                _cardSendText = SendText;
                 send.Click += (_, _) => SendText();
                 box.KeyDown += (_, ke) =>
                 {
@@ -5092,11 +5095,14 @@ public partial class TerminalControl : Control, IDisposable
                     MaxWidth = 440,
                 };
                 var send = MakeChoiceButton(Services.Loc.Get("PlanSendFeedback", "Send"), textOption.Label, null, false);
-                void SendFeedback()
+                bool SendFeedback()
                 {
                     var text = box.Text?.Trim();
-                    if (!string.IsNullOrEmpty(text)) ChooseOption(prompt, textOption, text);
+                    if (string.IsNullOrEmpty(text)) return false;
+                    ChooseOption(prompt, textOption, text);
+                    return true;
                 }
+                _cardSendText = SendFeedback;
                 send.Click += (_, _) => SendFeedback();
                 box.KeyDown += (_, ke) =>
                 {
@@ -5176,6 +5182,7 @@ public partial class TerminalControl : Control, IDisposable
         _permissionOverlay = null;
         _cardChoices.Clear();
         _cardChoice = -1;
+        _cardSendText = null;
         _panelText = null;
         _panelScroll = null;
         _panelTitle = null;
@@ -5254,6 +5261,7 @@ public partial class TerminalControl : Control, IDisposable
     private bool _cardKeepFocus;
     private bool _cardPages;             // Left/Right move between the questions of an Ask card
     private bool _swallowCardSpace;      // the Space that ticked a row is not typed into the composer
+    private Func<bool>? _cardSendText;   // sends what the card's text box holds; false when empty
 
     private void AddCardChoice(Button btn, Action choose, bool current, bool toggles = false)
     {
@@ -5328,6 +5336,9 @@ public partial class TerminalControl : Control, IDisposable
             case Key.Enter:
                 // A focused button outside the options (Next, Cancel) is clicked by itself
                 if (focus && e.Source is Button b && !_cardChoices.Exists(c => c.Button == b)) return false;
+                // Feedback typed into the card is what Enter sends, even with the box no longer
+                // focused; only an option focused on purpose wins over it
+                if (!(focus && e.Source is Button) && _cardSendText?.Invoke() == true) return true;
                 _cardChoices[Math.Max(0, _cardChoice)].Choose();
                 return true;
             case Key.Space:

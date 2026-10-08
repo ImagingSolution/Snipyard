@@ -563,6 +563,7 @@ public class DocumentViewPanel : Panel
     // shows the spinner too, since the CLI takes a moment to start its own.
     private void PlaceWorkingView()
     {
+        var keepFocus = FocusInLiveCard();
         if (_liveCard != null) _messagesStack.Children.Remove(_liveCard);
         _messagesStack.Children.Remove(_workingView);
         _messagesStack.Children.Remove(_queueView);
@@ -578,6 +579,16 @@ public class DocumentViewPanel : Panel
         _workingGlyph.Spinning = busy;
         if (busy || _messagesStack.Children.Count > 0) _messagesStack.Children.Add(_workingView);
         if (_queueItems.Count > 0) _messagesStack.Children.Add(_queueView);
+        keepFocus?.Focus();
+    }
+
+    // Moving the live card to the end takes it out of the tree for a moment, which drops the
+    // keyboard focus: a feedback box being typed into would lose its Enter to the composer
+    private InputElement? FocusInLiveCard()
+    {
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as InputElement;
+        return _liveCard != null && focused != null
+            && (focused == _liveCard || _liveCard.IsVisualAncestorOf(focused)) ? focused : null;
     }
 
     /// <summary>
@@ -722,6 +733,7 @@ public class DocumentViewPanel : Panel
         _viewMessages = messages;
         UpdateExtras(messages);
         RemovePendingView();
+        var keepFocus = FocusInLiveCard();
         if (_liveCard != null) _messagesStack.Children.Remove(_liveCard);
         _messagesStack.Children.Remove(_workingView);
         _messagesStack.Children.Remove(_queueView);
@@ -758,6 +770,7 @@ public class DocumentViewPanel : Panel
                 _messagesStack.Children.Add(_pendingView);
         }
         PlaceWorkingView();
+        keepFocus?.Focus();
         if (_searchBar.IsVisible && changed) UpdateMatches(jumpToNearest: false);
 
         SetEmptyState(_messagesStack.Children.Count == 0 ? "" : null);
