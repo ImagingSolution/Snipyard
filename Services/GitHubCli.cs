@@ -224,7 +224,9 @@ public static class GitHubCli
     /// Opens a pull request from the current branch. The body goes over stdin, so newlines and
     /// Japanese survive intact; gh works out the head branch from the checkout.
     /// </summary>
-    public static Task<GitResult> CreateAsync(string repoRoot, string title, string body, string baseBranch)
+    public static Task<GitResult> CreateAsync(string repoRoot, string title, string body, string baseBranch,
+        IReadOnlyList<string>? reviewers = null, IReadOnlyList<string>? assignees = null,
+        IReadOnlyList<string>? labels = null, bool draft = false)
     {
         return Task.Run(() =>
         {
@@ -236,9 +238,64 @@ public static class GitHubCli
                 args.Add("--base");
                 args.Add(baseBranch);
             }
+            // "=" form so a value can never be read as another flag. gh splits each of these on
+            // commas as CSV, so a label with a comma in its name has to arrive quoted.
+            foreach (var r in reviewers ?? Array.Empty<string>()) args.Add("--reviewer=" + CsvItem(r));
+            foreach (var a in assignees ?? Array.Empty<string>()) args.Add("--assignee=" + CsvItem(a));
+            foreach (var l in labels ?? Array.Empty<string>()) args.Add("--label=" + CsvItem(l));
+            if (draft) args.Add("--draft");
 
             return ProcessRunner.Run("gh", repoRoot, body ?? "", TimeoutMs, null, args.ToArray());
         });
+
+        static string CsvItem(string value) =>
+            value.IndexOfAny(new[] { ',', '"' }) < 0 ? value : "\"" + value.Replace("\"", "\"\"") + "\"";
+    }
+
+    /// <summary>
+    /// What a new pull request can be tagged with: the people who can be assigned or asked for a
+    /// review, the teams that can review it, and the repository's labels. <see cref="Me"/> is
+    /// the signed-in login, which GitHub refuses as a reviewer of one's own pull request.
+    /// </summary>
+    public sealed record PrCandidates(string Me, List<string> Users, List<string> Teams, List<string> Labels);
+
+    /// <summary>
+    /// Reads <see cref="PrCandidates"/>. The four gh calls run side by side, and any one of them
+    /// failing - no teams on a personal repository, say - only leaves its list empty.
+    /// </summary>
+    public static async Task<PrCandidates> GetPrCandidatesAsync(string repoRoot)
+    {
+        // {owner}/{repo} is gh's own placeholder for the repository in the working directory.
+        // /assignees rather than /collaborators: it is the same set of people, and it does not
+        // need push access to read.
+        var me = Task.Run(() => Lines("api", "user", "--jq", ".login"));
+        var users = Task.Run(() => Lines("api", "repos/{owner}/{repo}/assignees", "--paginate", "--jq", ".[].login"));
+        var teams = Task.Run(() => Lines("api", "repos/{owner}/{repo}/teams", "--paginate", "--jq", ".[].html_url"));
+        var labels = Task.Run(() => Lines("label", "list", "--limit", "500", "--json", "name", "--jq", ".[].name"));
+        await Task.WhenAll(me, users, teams, labels);
+
+        // --reviewer takes a team as org/slug, which the team's own URL spells out
+        var teamNames = new List<string>();
+        foreach (var url in teams.Result)
+        {
+            var m = Regex.Match(url, @"/orgs/([^/]+)/teams/([^/?#]+)");
+            if (m.Success) teamNames.Add(m.Groups[1].Value + "/" + m.Groups[2].Value);
+        }
+        return new PrCandidates(me.Result.Count > 0 ? me.Result[0] : "", users.Result, teamNames, labels.Result);
+
+        List<string> Lines(params string[] args)
+        {
+            var list = new List<string>();
+            try
+            {
+                var result = ProcessRunner.Run("gh", repoRoot, null, TimeoutMs, null, args);
+                if (!result.Ok) return list;
+                foreach (var line in result.StdOut.Split('\n'))
+                    if (line.Trim() is { Length: > 0 } text) list.Add(text);
+            }
+            catch { }
+            return list;
+        }
     }
 
     /// <summary>

@@ -2295,20 +2295,25 @@ public sealed partial class SourceControlPanel : UserControl
         }
 
         var repo = _repo;
+        // Not awaited here: four gh round trips would hold the dialog back, so it opens at once
+        // and the pickers fill in when the candidates arrive.
+        var candidates = GitHubCli.GetPrCandidatesAsync(repo);
         var subjectTask = GitWriteService.GetLastSubjectAsync(repo);
         var baseTask = GitHubCli.GetDefaultBranchAsync(repo);
         await Task.WhenAll(subjectTask, baseTask);
         if (!string.Equals(repo, _repo, StringComparison.OrdinalIgnoreCase)) return;
 
-        var draft = await ShowPullRequestDialogAsync(subjectTask.Result, baseTask.Result);
+        var draft = await ShowPullRequestDialogAsync(subjectTask.Result, baseTask.Result, candidates);
         if (draft == null) return;
 
         string createdUrl = "";
         await RunAsync(Loc.Get("CreatingPrStatus", "Creating the pull request..."), async () =>
         {
-            var result = await GitHubCli.CreateAsync(repo, draft.Value.Title, draft.Value.Body,
-                draft.Value.Base);
-            if (result.Ok) createdUrl = GitHubCli.ExtractUrl(result.StdOut + "\n" + result.StdErr);
+            var result = await GitHubCli.CreateAsync(repo, draft.Title, draft.Body, draft.Base,
+                draft.Reviewers, draft.Assignees, draft.Labels, draft.IsDraft);
+            // Read even on failure: a reviewer GitHub refuses fails the run after the pull
+            // request itself was already created, and the user still wants to land on it.
+            createdUrl = GitHubCli.ExtractUrl(result.StdOut + "\n" + result.StdErr);
             return result;
         });
 
@@ -2317,11 +2322,15 @@ public sealed partial class SourceControlPanel : UserControl
         if (createdUrl.Length > 0) OpenUrl(createdUrl);
     }
 
-    /// <summary>The three things gh needs, or null when the user backed out.</summary>
-    private Task<(string Title, string Body, string Base)?> ShowPullRequestDialogAsync(
-        string defaultTitle, string defaultBase)
+    private sealed record PullRequestDraft(string Title, string Body, string Base,
+        IReadOnlyList<string> Reviewers, IReadOnlyList<string> Assignees, IReadOnlyList<string> Labels,
+        bool IsDraft);
+
+    /// <summary>What gh needs to open the pull request, or null when the user backed out.</summary>
+    private Task<PullRequestDraft?> ShowPullRequestDialogAsync(
+        string defaultTitle, string defaultBase, Task<GitHubCli.PrCandidates> candidates)
     {
-        var source = new TaskCompletionSource<(string, string, string)?>();
+        var source = new TaskCompletionSource<PullRequestDraft?>();
         var owner = TopLevel.GetTopLevel(this) as Window;
         if (owner == null)
         {
@@ -2381,7 +2390,53 @@ public sealed partial class SourceControlPanel : UserControl
         panel.Children.Add(bodyBox);
         panel.Children.Add(FieldLabel(Loc.Get("PrBaseLabel", "Merge into")));
         panel.Children.Add(baseBox);
+
+        var reviewers = new PrPicker();
+        var assignees = new PrPicker();
+        var labels = new PrPicker();
+        var pickers = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            ColumnSpacing = 12,
+            RowSpacing = 6,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        AddPickerRow(0, Loc.Get("PrReviewersLabel", "Reviewers"), reviewers);
+        AddPickerRow(1, Loc.Get("PrAssigneesLabel", "Assignees"), assignees);
+        AddPickerRow(2, Loc.Get("PrLabelsLabel", "Labels"), labels);
+        panel.Children.Add(pickers);
+
+        var draftBox = new CheckBox { Content = Loc.Get("PrDraftOption", "Create as draft") };
+        panel.Children.Add(draftBox);
         panel.Children.Add(buttons);
+
+        void AddPickerRow(int row, string label, PrPicker picker)
+        {
+            var text = FieldLabel(label);
+            text.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetRow(text, row);
+            Grid.SetRow(picker.Button, row);
+            Grid.SetColumn(picker.Button, 1);
+            pickers.Children.Add(text);
+            pickers.Children.Add(picker.Button);
+        }
+
+        _ = FillPickersAsync();
+        async Task FillPickersAsync()
+        {
+            GitHubCli.PrCandidates c;
+            try { c = await candidates; }
+            catch { c = new GitHubCli.PrCandidates("", new(), new(), new()); }
+
+            var noUsers = Loc.Get("PrPickerNoUsers", "No one to choose");
+            // GitHub will not take the author as a reviewer of their own pull request, while
+            // assigning yourself is the most common choice of all - so it leads that list.
+            var others = c.Users.Where(u => !string.Equals(u, c.Me, StringComparison.OrdinalIgnoreCase)).ToList();
+            reviewers.SetItems(others.Concat(c.Teams), noUsers);
+            assignees.SetItems(c.Me.Length > 0 ? others.Prepend(c.Me) : others, noUsers);
+            labels.SetItems(c.Labels, Loc.Get("PrPickerNoLabels", "This repository has no labels"));
+        }
 
         var dialog = new Window
         {
@@ -2404,7 +2459,9 @@ public sealed partial class SourceControlPanel : UserControl
             if (title.Length == 0) { titleBox.Focus(); return; }
 
             answered = true;
-            source.TrySetResult((title, bodyBox.Text ?? "", (baseBox.Text ?? "").Trim()));
+            source.TrySetResult(new PullRequestDraft(title, bodyBox.Text ?? "", (baseBox.Text ?? "").Trim(),
+                reviewers.Selected.ToList(), assignees.Selected.ToList(), labels.Selected.ToList(),
+                draftBox.IsChecked == true));
             dialog.Close();
         };
         cancel.Click += (_, _) => { answered = true; source.TrySetResult(null); dialog.Close(); };

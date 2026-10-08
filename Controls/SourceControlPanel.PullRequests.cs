@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -35,6 +36,95 @@ public sealed partial class SourceControlPanel
         var item = new MenuItem { Header = header };
         item.Click += (_, _) => onClick();
         return item;
+    }
+
+    /// <summary>
+    /// A field in the new-pull-request dialog that picks any number of names from a list gh
+    /// supplied: a button showing the choice so far, opening a filterable checklist. The list
+    /// arrives after the dialog is up, so it starts out saying it is loading.
+    /// </summary>
+    private sealed class PrPicker
+    {
+        private readonly List<string> _selected = new();
+        private readonly StackPanel _list = new();
+        private readonly TextBox _filter;
+        private readonly TextBlock _summary;
+        private List<string> _items = new();
+        private string _emptyText = Loc.Get("PrPickerLoading", "Loading...");
+
+        public Button Button { get; }
+
+        /// <summary>The names ticked, in the order they were ticked.</summary>
+        public IReadOnlyList<string> Selected => _selected;
+
+        public PrPicker()
+        {
+            _summary = new TextBlock
+            {
+                Text = Loc.Get("PrPickerNone", "None"),
+                FontSize = 12.5,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            _filter = new TextBox
+            {
+                PlaceholderText = Loc.Get("PrPickerFilter", "Filter"),
+                FontSize = 12,
+                Padding = new Thickness(6, 4),
+            };
+            _filter.TextChanged += (_, _) => Rebuild();
+
+            var content = new StackPanel { Spacing = 6, Width = 300 };
+            content.Children.Add(_filter);
+            content.Children.Add(new ScrollViewer { Content = _list, MaxHeight = 260 });
+
+            Button = new Button
+            {
+                Content = _summary,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(8, 5),
+                Flyout = new Flyout { Content = content, Placement = PlacementMode.BottomEdgeAlignedLeft },
+            };
+            Rebuild();
+        }
+
+        /// <summary>Fills the list; <paramref name="emptyText"/> is what it says if there is nothing to pick.</summary>
+        public void SetItems(IEnumerable<string> items, string emptyText)
+        {
+            _items = items.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            _emptyText = emptyText;
+            Rebuild();
+        }
+
+        private void Rebuild()
+        {
+            _list.Children.Clear();
+            var filter = (_filter.Text ?? "").Trim();
+            foreach (var item in _items)
+            {
+                if (filter.Length > 0 && item.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                var box = new CheckBox { Content = item, FontSize = 12.5, IsChecked = _selected.Contains(item) };
+                box.IsCheckedChanged += (_, _) =>
+                {
+                    _selected.Remove(item);
+                    if (box.IsChecked == true) _selected.Add(item);
+                    _summary.Text = _selected.Count == 0
+                        ? Loc.Get("PrPickerNone", "None")
+                        : string.Join(", ", _selected);
+                };
+                _list.Children.Add(box);
+            }
+
+            if (_list.Children.Count == 0)
+                _list.Children.Add(new TextBlock
+                {
+                    Text = _items.Count == 0 ? _emptyText : Loc.Get("PrPickerNoMatch", "No matches"),
+                    FontSize = 12,
+                    Opacity = 0.7,
+                    Margin = new Thickness(4),
+                });
+        }
     }
 
     /// <summary>A link row at the top of the pull-request list that opens the repository on GitHub.</summary>

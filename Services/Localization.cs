@@ -626,6 +626,16 @@ public static class Loc
         ["PrTitleLabel"] = new() { ["English"] = "Title", ["日本語"] = "タイトル" },
         ["PrBodyLabel"] = new() { ["English"] = "What does this change, and why?", ["日本語"] = "何を、なぜ変えたのか" },
         ["PrBaseLabel"] = new() { ["English"] = "Merge into", ["日本語"] = "取り込み先" },
+        ["PrReviewersLabel"] = new() { ["English"] = "Reviewers", ["日本語"] = "レビュアー" },
+        ["PrAssigneesLabel"] = new() { ["English"] = "Assignees", ["日本語"] = "担当者" },
+        ["PrLabelsLabel"] = new() { ["English"] = "Labels", ["日本語"] = "ラベル" },
+        ["PrDraftOption"] = new() { ["English"] = "Create as draft", ["日本語"] = "下書きとして作成" },
+        ["PrPickerNone"] = new() { ["English"] = "None", ["日本語"] = "なし" },
+        ["PrPickerLoading"] = new() { ["English"] = "Loading...", ["日本語"] = "読み込み中..." },
+        ["PrPickerFilter"] = new() { ["English"] = "Filter", ["日本語"] = "絞り込み" },
+        ["PrPickerNoMatch"] = new() { ["English"] = "No matches", ["日本語"] = "一致するものがありません" },
+        ["PrPickerNoUsers"] = new() { ["English"] = "No one to choose", ["日本語"] = "選べるユーザーがいません" },
+        ["PrPickerNoLabels"] = new() { ["English"] = "This repository has no labels", ["日本語"] = "このリポジトリにはラベルがありません" },
 
         // Conflicts and unfinished operations.
         ["ConflictCountFmt"] = new() { ["English"] = "{0} file(s) conflict", ["日本語"] = "{0} 件のファイルが衝突しています" },
