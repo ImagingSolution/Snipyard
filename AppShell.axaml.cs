@@ -266,6 +266,13 @@ internal partial class AppShell : UserControl, IDockOwner
         public string? SessionId { get; set; }
 
         /// <summary>
+        /// Pid of the CLI whose ~/.claude/sessions ledger named <see cref="SessionId"/>, or 0
+        /// while none has. /clear starts a new session in the same process and rewrites that
+        /// ledger, so this is what lets the window follow it to its new transcript.
+        /// </summary>
+        public int CliPid { get; set; }
+
+        /// <summary>
         /// Cost and context readout for this window's transcript. One per window: a single
         /// shared monitor had to be re-pointed on every switch, which threw away the parse of
         /// a multi-megabyte transcript and left the status bar reporting the window the user
@@ -5079,6 +5086,7 @@ internal partial class AppShell : UserControl, IDockOwner
 
         // A new window learns its session id a poll or two after launch, and /clear moves it to
         // a new one; either way Chat View follows the window's own transcript.
+        FollowSessionChange(_children[_activeChildIndex]);
         if (_children[_activeChildIndex].Terminal is { IsDocumentView: true } docTerminal)
             docTerminal.SetDocumentViewSession(ResolveActiveSessionPath());
 
@@ -9146,8 +9154,8 @@ internal partial class AppShell : UserControl, IDockOwner
             // The new child is already active, so nothing else will refresh the status bar
             // for it: without this, Stop / Undo stay blank until the tab is clicked.
 
-            if (string.IsNullOrEmpty(sessionId))
-                _ = TrackSessionIdAsync(entry, DateTime.Now.AddSeconds(-2));
+            // A resumed window knows its id already, but still needs its CLI's pid to follow /clear
+            _ = TrackSessionIdAsync(entry, DateTime.Now.AddSeconds(-2));
         }, DispatcherPriority.Background);
     }
 
@@ -9191,12 +9199,16 @@ internal partial class AppShell : UserControl, IDockOwner
             return;
         }
 
-        for (int i = 0; string.IsNullOrEmpty(entry.SessionId); i++)
+        // Runs until the ledger names this window's CLI. A window whose id is already known -
+        // resumed, or found by the transcript route - only keeps looking while a launch could
+        // still be settling: a CLI that keeps no ledger at all would otherwise be polled forever.
+        for (int i = 0; entry.CliPid == 0; i++)
         {
             // Brisk while a launch could still be settling, then slow: past that point this is a
             // window whose CLI has not registered at all - sitting on a trust prompt, say - and
             // there is no reason to keep taking a snapshot of the process table every second.
             bool early = i < 20;
+            if (!early && !string.IsNullOrEmpty(entry.SessionId)) return;
             await Task.Delay(early ? 1500 : 5000);
             if (!_children.Contains(entry)) return;
 
@@ -9205,16 +9217,46 @@ internal partial class AppShell : UserControl, IDockOwner
             // that is drawing the terminal.
             int shell = entry.Terminal.ShellProcessId;
             var taken = TakenSessionIds(entry);
-            var found = await Task.Run(() => LedgerSessionId(shell, folder, taken)
-                ?? (early ? SessionService.FindSessionIdCreatedAfter(folder, launchedAt, taken) : null));
+            bool needId = string.IsNullOrEmpty(entry.SessionId);
+            var (pid, found) = await Task.Run(() => LedgerSessionId(shell, folder, taken)
+                ?? (0, needId && early ? SessionService.FindSessionIdCreatedAfter(folder, launchedAt, taken) : null));
 
             if (!_children.Contains(entry)) return;
-            entry.SessionId = found;
+            entry.CliPid = pid;
+            if (pid != 0 || needId) entry.SessionId = found;
 
             // Nothing more will register once the CLI is gone, and a window left open on a dead
             // process would otherwise poll for the rest of the session.
             if (string.IsNullOrEmpty(entry.SessionId) && !entry.Terminal.IsProcessRunning) return;
         }
+    }
+
+    private bool _followingSession;
+    private DateTime _nextSessionFollowUtc;
+
+    /// <summary>
+    /// Moves the window onto the session its CLI is running now. /clear keeps the process and
+    /// starts a new session with a new transcript, and the CLI rewrites its ledger to say so;
+    /// without this the window stayed on the old id, and Chat View kept showing the conversation
+    /// that had just been cleared. The new transcript is not written until the next turn, so
+    /// until then the view is empty - which is what /clear looks like in the terminal too.
+    /// </summary>
+    private async void FollowSessionChange(MdiChildInfo entry)
+    {
+        if (entry.CliPid == 0 || _followingSession || DateTime.UtcNow < _nextSessionFollowUtc) return;
+        _followingSession = true;
+        _nextSessionFollowUtc = DateTime.UtcNow.AddSeconds(1.5);
+        try
+        {
+            int pid = entry.CliPid;
+            var folder = entry.ProjectFolder;
+            var id = await Task.Run(() => RunningSessionService.SessionIdForProcess(pid, folder));
+            if (string.IsNullOrEmpty(id) || !_children.Contains(entry)) return;
+            if (string.Equals(id, entry.SessionId, StringComparison.OrdinalIgnoreCase)) return;
+            if (TakenSessionIds(entry).Contains(id!)) return;
+            entry.SessionId = id;
+        }
+        finally { _followingSession = false; }
     }
 
     /// <summary>
@@ -9223,7 +9265,7 @@ internal partial class AppShell : UserControl, IDockOwner
     /// exact: the ledger entry found this way belongs to this window's own process, not to
     /// whichever session in the folder happened to be written most recently.
     /// </summary>
-    private static string? LedgerSessionId(int shellPid, string folder, HashSet<string> taken)
+    private static (int Pid, string? Id)? LedgerSessionId(int shellPid, string folder, HashSet<string> taken)
     {
         if (shellPid == 0) return null;
 
@@ -9232,7 +9274,7 @@ internal partial class AppShell : UserControl, IDockOwner
             var id = RunningSessionService.SessionIdForProcess(pid, folder);
             // A pid can be recycled between the snapshot and the read, so an id another window
             // already holds is treated as a mismatch rather than taken from it.
-            if (!string.IsNullOrEmpty(id) && !taken.Contains(id!)) return id;
+            if (!string.IsNullOrEmpty(id) && !taken.Contains(id!)) return (pid, id);
         }
         return null;
     }
