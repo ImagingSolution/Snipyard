@@ -47,6 +47,13 @@ public static class SubagentMonitor
     private static readonly Regex BackgroundTaskId =
         new(@"""backgroundTaskId""\s*:\s*""([A-Za-z0-9_-]{1,64})""", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Matches the task a stop call names: <c>"name":"TaskStop","input":{"task_id":"b7j0a1pvp"}</c>,
+    /// or <c>shell_id</c> on the older KillShell.
+    /// </summary>
+    private static readonly Regex StoppedTaskId =
+        new(@"""(?:task_id|shell_id)""\s*:\s*""([A-Za-z0-9_-]{1,64})""", RegexOptions.Compiled);
+
     /// <summary>Matches the record's own ISO timestamp, which dates the launch above.</summary>
     private static readonly Regex RecordTimestamp =
         new(@"""timestamp""\s*:\s*""([^""]{10,40})""", RegexOptions.Compiled);
@@ -268,6 +275,13 @@ public static class SubagentMonitor
                 // Cheap reject first: the notice is a fraction of a percent of the lines.
                 if (line.Contains("task-notification", StringComparison.Ordinal))
                     foreach (Match match in TaskId.Matches(line))
+                        scan.Finished.Add(match.Groups[1].Value);
+
+                // A task stopped by hand never posts that notice, so the stop call is its end.
+                // Without this the window stayed on "still working" until the cutoff below.
+                if (line.Contains(@"""name"":""TaskStop""", StringComparison.Ordinal) ||
+                    line.Contains(@"""name"":""KillShell""", StringComparison.Ordinal))
+                    foreach (Match match in StoppedTaskId.Matches(line))
                         scan.Finished.Add(match.Groups[1].Value);
 
                 if (line.Contains("backgroundTaskId", StringComparison.Ordinal))
