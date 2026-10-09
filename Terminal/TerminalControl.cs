@@ -4444,7 +4444,13 @@ public partial class TerminalControl : Control, IDisposable
         // just answered stays down until its prompt leaves the screen, rather than popping back up
         // while the CLI is still taking the keys in.
         var signature = prompt?.Signature;
-        if (signature == _choiceSignature) return;
+        if (signature == _choiceSignature)
+        {
+            // The preview box follows the CLI's caret, which the signature leaves out
+            if (prompt?.Preview is { } preview && _askPreview != null && _askPreview.Text != preview)
+                _askPreview.Text = preview;
+            return;
+        }
         // A panel redraws on every arrow key: the same page is updated in place, so the card
         // neither flickers nor jumps back to the top
         if (prompt is { Kind: ChoiceKind.Panel } && _panelText != null && _panelTitle == prompt.Title)
@@ -4471,7 +4477,8 @@ public partial class TerminalControl : Control, IDisposable
     /// <param name="Context">The prompt's rows above its options - the command or file being
     /// asked about - so two prompts with the same question still read as different ones.</param>
     private sealed record ChoicePrompt(ChoiceKind Kind, string Title, string Context,
-        IReadOnlyList<ChoiceOption> Options, int CaretNumber, string? Footer, bool Unnumbered = false)
+        IReadOnlyList<ChoiceOption> Options, int CaretNumber, string? Footer, bool Unnumbered = false,
+        string? Preview = null)
     {
         public string Signature => Kind + "\n" + Context + "\n"
             + string.Join("\n", Options.Select(o => o.Number + ". " + o.Label));
@@ -4687,8 +4694,13 @@ public partial class TerminalControl : Control, IDisposable
         if (!IsAskSelectorOnScreen()) return null;
         int totalRows = _buffer.Scrollback.Count + _buffer.Rows;
         var rows = new List<string>();
+        var cols = new List<List<int>>();
         for (int i = Math.Max(0, totalRows - 40); i < totalRows; i++)
-            rows.Add(GetRowText(i).TrimEnd());
+        {
+            rows.Add(GetRowText(i, out var colOf).TrimEnd());
+            cols.Add(colOf);
+        }
+        var preview = CutAskPreviewBox(rows, cols);
 
         int last = -1;
         for (int i = rows.Count - 1; i >= 0 && last < 0; i--)
@@ -4715,10 +4727,13 @@ public partial class TerminalControl : Control, IDisposable
                 firstRow = i;
                 gap = 0;
             }
-            else if (!m.Success && ++gap <= 4)
+            // Blank rows do not count: a preview box taller than the options leaves a run of
+            // them once it is cut away. Nor does the preview page's "Notes:" hint.
+            else if (!m.Success && (rows[i].Trim(' ', '│', '|').Length == 0 || ++gap <= 4))
             {
                 var t = rows[i].Trim(' ', '│', '|');
-                if (t.Length > 0 && !t.All(c => c is '─' or '━' or '-' or '╌')) detail.Insert(0, t);
+                if (t.Length > 0 && !t.All(c => c is '─' or '━' or '-' or '╌') && !t.StartsWith("Notes:"))
+                    detail.Insert(0, t);
             }
             else break;
         }
@@ -4735,7 +4750,53 @@ public partial class TerminalControl : Control, IDisposable
             if (t.Length > 0) context.Insert(0, t);
         }
         var title = context.LastOrDefault(t => !t.StartsWith('←') && !t.EndsWith('→')) ?? "";
-        return new ChoicePrompt(ChoiceKind.Ask, title, string.Join("\n", context), options, caret, null);
+        return new ChoicePrompt(ChoiceKind.Ask, title, string.Join("\n", context), options, caret, null, Preview: preview);
+    }
+
+    /// <summary>
+    /// A question whose options carry previews draws the focused option's preview in a box to
+    /// the right of the options, its top edge on option 1's row. Left in, the box's rows read as
+    /// part of the labels and descriptions, and the labels change with the caret. Cuts every
+    /// row the box spans at the box's left column and returns what was inside the box.
+    /// </summary>
+    private static string? CutAskPreviewBox(List<string> rows, List<List<int>> cols)
+    {
+        for (int i = 0; i < rows.Count; i++)
+        {
+            int k = rows[i].IndexOfAny(['┌', '╭']);
+            if (k <= 0 || rows[i][k - 1] != ' ') continue;
+            int col = cols[i][k];
+            if (col < 8) continue;
+
+            int end = -1;
+            for (int j = i + 1; j < rows.Count && end < 0; j++)
+            {
+                int b = rows[j].IndexOfAny(['└', '╰']);
+                if (b >= 0 && cols[j][b] == col) end = j;
+            }
+            if (end < 0) continue;
+
+            // The box's inside, its side bars dropped and its own indent kept
+            var inside = new List<string>();
+            for (int j = i; j <= end; j++)
+            {
+                int cut = cols[j].FindIndex(c => c >= col);
+                if (cut < 0 || cut >= rows[j].Length) continue;
+                var part = rows[j][cut..];
+                rows[j] = rows[j][..cut].TrimEnd();
+                if (j == i || j == end) continue;
+                part = part.TrimEnd();
+                if (part.StartsWith('│')) part = part[1..];
+                if (part.EndsWith('│')) part = part[..^1];
+                inside.Add(part.TrimEnd());
+            }
+            while (inside.Count > 0 && inside[0].Length == 0) inside.RemoveAt(0);
+            while (inside.Count > 0 && inside[^1].Length == 0) inside.RemoveAt(inside.Count - 1);
+            if (inside.Count == 0) return null;
+            int indent = inside.Where(l => l.Length > 0).Min(l => l.Length - l.TrimStart().Length);
+            return string.Join("\n", inside.Select(l => l.Length >= indent ? l[indent..] : l));
+        }
+        return null;
     }
 
     /// <summary>Grabs the text of the permission prompt so it can be explained in plain words.</summary>
@@ -4759,6 +4820,8 @@ public partial class TerminalControl : Control, IDisposable
     private async void ChooseOption(ChoicePrompt prompt, ChoiceOption option, string? text)
     {
         HidePermissionOverlay();
+        // A preview's caret move still going in would interleave with these keys
+        for (int w = 0; w < 40 && _askCaretMoving; w++) await Task.Delay(50);
         var now = prompt.Kind == ChoiceKind.Ask ? ReadAskPrompt() : ReadChoicePrompt();
         if (now == null || now.Signature != prompt.Signature) return;
 
@@ -4946,7 +5009,40 @@ public partial class TerminalControl : Control, IDisposable
                 var btn = MakeChoiceButton("", o.Label, null, true);
                 btn.Content = label;
                 AddCardChoice(btn, () => ChooseOption(prompt, o, null), o.Number == prompt.CaretNumber, o.Toggles);
+                // The CLI draws only the focused option's preview, so its caret is moved to
+                // whichever option the card's outline is on (see SelectCardChoice)
+                if (prompt.Preview != null)
+                {
+                    _askSignature = prompt.Signature;
+                    _cardAskOptions[_cardChoices.Count - 1] = o.Number;
+                }
                 content.Children.Add(btn);
+            }
+
+            if (prompt.Preview != null)
+            {
+                _askPreview = new SelectableTextBlock
+                {
+                    Text = prompt.Preview,
+                    FontFamily = _typeface.FontFamily,
+                    FontSize = 12,
+                    Foreground = primary,
+                };
+                content.Children.Add(new Border
+                {
+                    BorderBrush = secondary,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(10, 6),
+                    Margin = new Thickness(0, 4, 0, 4),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Child = new ScrollViewer
+                    {
+                        HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                        VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                        Content = _askPreview,
+                    },
+                });
             }
 
             if (textOption != null)
@@ -5208,6 +5304,43 @@ public partial class TerminalControl : Control, IDisposable
         _panelText = null;
         _panelScroll = null;
         _panelTitle = null;
+        _askPreview = null;
+        _askSignature = null;
+        _cardAskOptions.Clear();
+        _askCaretTarget = 0;
+    }
+
+    private SelectableTextBlock? _askPreview;
+    private string? _askSignature;
+    // Card choice index -> option number, on a page whose options carry previews
+    private readonly Dictionary<int, int> _cardAskOptions = new();
+    private int _askCaretTarget;
+    private bool _askCaretMoving;
+
+    /// <summary>
+    /// Arrows the AskUserQuestion selector's caret onto an option so the CLI draws that option's
+    /// preview. One key at a time, each waiting for the screen to show it landed: the target can
+    /// change while the keys are going in, and a stale read would overshoot.
+    /// </summary>
+    private async void MoveAskCaret(string signature, int number)
+    {
+        _askCaretTarget = number;
+        if (_askCaretMoving) return;
+        _askCaretMoving = true;
+        try
+        {
+            for (int step = 0; step < 20 && _askCaretTarget > 0; step++)
+            {
+                var now = ReadAskPrompt();
+                if (now == null || now.Signature != signature || now.CaretNumber < 0
+                    || now.CaretNumber == _askCaretTarget) break;
+                int from = now.CaretNumber;
+                _pty?.WriteInput(from < _askCaretTarget ? "\x1b[B" : "\x1b[A");
+                for (int w = 0; w < 10 && ReadAskPrompt()?.CaretNumber == from; w++)
+                    await Task.Delay(50);
+            }
+        }
+        finally { _askCaretMoving = false; }
     }
 
     // ── Panel card ──
@@ -5317,6 +5450,8 @@ public partial class TerminalControl : Control, IDisposable
         var selected = _cardChoices[_cardChoice].Button;
         selected.BringIntoView();
         if (focus) selected.Focus();
+        if (_askSignature != null && _cardAskOptions.TryGetValue(_cardChoice, out var number))
+            MoveAskCaret(_askSignature, number);
     }
 
     /// <summary>Up/Down move through the open card's options and Enter picks one.</summary>
