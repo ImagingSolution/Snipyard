@@ -4235,6 +4235,7 @@ internal partial class AppShell : UserControl, IDockOwner
         // and the file tree also read. Route it through the one refresh the window already has.
         panel.GitChanged += (_, _) => RefreshGitInfo();
         panel.BranchStateRead += (_, e) => OnPanelBranchStateRead(e.Repo, e.State);
+        panel.PullRequestsRead += (_, e) => OnPullRequestCountRead(e.Repo, e.Count);
 
         _sourceControl = panel;
         SourceControlHost.Content = panel;
@@ -4431,6 +4432,7 @@ internal partial class AppShell : UserControl, IDockOwner
         if (generation != _badgeGeneration) return;
 
         _badgeRepo = repo;
+        _prBadgeCount = repo != null && PrCounts.TryGetValue(repo, out var known) ? known : 0;
         if (repo == null)
         {
             SetSourceControlBadge(0);
@@ -4443,13 +4445,29 @@ internal partial class AppShell : UserControl, IDockOwner
 
     /// <summary>
     /// Quiet, like the panel's timer: an offline laptop or an expired credential leaves the
-    /// last count standing instead of raising a prompt nobody asked for.
+    /// last count standing instead of raising a prompt nobody asked for. The open pull
+    /// requests are counted on the same beat.
     /// </summary>
     private async Task FetchBadgeAsync(string repo)
     {
         BadgeFetchedAt[repo] = DateTime.UtcNow;
+        var prCount = GitHubCli.CountOpenAsync(repo);
         var result = await GitWriteService.FetchAsync(repo, quiet: true);
         if (result.Ok) await ReadBadgeAsync(repo);
+        if (await prCount is int count) OnPullRequestCountRead(repo, count);
+    }
+
+    /// <summary>Open pull requests last counted per repository, so a project switch shows its count at once.</summary>
+    private static readonly Dictionary<string, int> PrCounts = new(StringComparer.OrdinalIgnoreCase);
+    private int _prBadgeCount;
+
+    private void OnPullRequestCountRead(string repo, int count)
+    {
+        PrCounts[repo] = count;
+        if (!string.Equals(repo, _badgeRepo, StringComparison.OrdinalIgnoreCase)) return;
+
+        _prBadgeCount = count;
+        ApplySourceControlBadge();
     }
 
     private async Task ReadBadgeAsync(string repo)
@@ -4514,11 +4532,17 @@ internal partial class AppShell : UserControl, IDockOwner
     {
         SourceControlBadge.IsVisible = _badgeCount > 0;
         SourceControlBadgeText.Text = _badgeCount > 99 ? "99+" : _badgeCount.ToString();
-        ToolTip.SetTip(BtnActivitySourceControl, _badgeCount > 0
-            ? Loc.Get("SourceControlTooltip") + "\n" + (_badgeDetail.Length > 0
+        PullRequestBadge.IsVisible = _prBadgeCount > 0;
+        PullRequestBadgeText.Text = _prBadgeCount > 99 ? "99+" : _prBadgeCount.ToString();
+
+        var tip = Loc.Get("SourceControlTooltip");
+        if (_badgeCount > 0)
+            tip += "\n" + (_badgeDetail.Length > 0
                 ? _badgeDetail
-                : string.Format(Loc.Get("RemoteAheadFmt"), _badgeCount))
-            : Loc.Get("SourceControlTooltip"));
+                : string.Format(Loc.Get("RemoteAheadFmt"), _badgeCount));
+        if (_prBadgeCount > 0)
+            tip += "\n" + string.Format(Loc.Get("OpenPullRequestsFmt"), _prBadgeCount);
+        ToolTip.SetTip(BtnActivitySourceControl, tip);
     }
 
     private async void RefreshSessionList()

@@ -162,6 +162,12 @@ public sealed partial class SourceControlPanel : UserControl
     /// </summary>
     public event EventHandler<(string Repo, BranchState State)>? BranchStateRead;
 
+    /// <summary>
+    /// Raised when the pull-request list is read with an exact count (below gh's list limit),
+    /// so the activity bar's PR badge follows the panel while it is open.
+    /// </summary>
+    public event EventHandler<(string Repo, int Count)>? PullRequestsRead;
+
     public SourceControlPanel(bool isDark, Typeface mono, AppSettings settings,
         CliProviderService cli, SourceControlHost host)
     {
@@ -2070,6 +2076,7 @@ public sealed partial class SourceControlPanel : UserControl
         if (generation != _refreshGeneration) return;
 
         _pullRequests = list;
+        if (list.Count < GitHubCli.ListLimit) PullRequestsRead?.Invoke(this, (_repo, list.Count));
         _prSection.Title = string.Format(Loc.Get("PullRequestsFmt", "Pull requests ({0})"), list.Count);
         BuildPullRequestList();
         _ = RefreshGitHubExtrasAsync(generation);

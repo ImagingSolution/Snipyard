@@ -41,7 +41,7 @@ public static class GitHubCli
     /// <summary>The allowance for a repo-create-and-push, which reaches the network like a push does.</summary>
     private const int NetworkTimeoutMs = 180_000;
 
-    private const int ListLimit = 30;
+    public const int ListLimit = 30;
 
     /// <summary>
     /// Whether gh is installed and signed in. Cached: `gh auth status` reaches the network, and
@@ -81,6 +81,29 @@ public static class GitHubCli
             if (string.IsNullOrEmpty(repoRoot)) return false;
             var remotes = GitCli.Run(repoRoot, "remote", "-v");
             return remotes.Contains("github.com", StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    /// <summary>
+    /// How many pull requests are open, for the badge on the Source Control button. Null when
+    /// gh is not signed in, the repository is not on GitHub, or the call fails, so a passing
+    /// network error does not read as "none open".
+    /// </summary>
+    public static async Task<int?> CountOpenAsync(string repoRoot)
+    {
+        if (!await IsReadyAsync() || !await HasGitHubRemoteAsync(repoRoot)) return null;
+
+        return await Task.Run<int?>(() =>
+        {
+            try
+            {
+                var result = ProcessRunner.Run("gh", repoRoot, null, TimeoutMs, null,
+                    "pr", "list", "--state", "open", "--limit", "1000", "--json", "number");
+                if (!result.Ok || string.IsNullOrWhiteSpace(result.StdOut)) return null;
+                using var doc = JsonDocument.Parse(result.StdOut);
+                return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.GetArrayLength() : null;
+            }
+            catch { return null; }
         });
     }
 
