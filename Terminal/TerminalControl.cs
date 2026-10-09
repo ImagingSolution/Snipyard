@@ -335,6 +335,7 @@ public partial class TerminalControl : Control, IDisposable
         _inputTextBox.TextWrapping = TextWrapping.Wrap;
         _inputTextBox.AcceptsReturn = true;
         _inputTextBox.MinHeight = 0;
+        ScrollViewer.SetVerticalScrollBarVisibility(_inputTextBox, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
         // Selected text as in the replies: solid blue with white text, not the theme's dark grey
         _inputTextBox.SelectionBrush = Services.MarkdownParser.ChatSelectionBg;
         _inputTextBox.SelectionForegroundBrush = Brushes.White;
@@ -1459,8 +1460,13 @@ public partial class TerminalControl : Control, IDisposable
             // that just got narrower lays out at its old width and clips the right-hand side
             double w = ChatWidth(double.IsFinite(availableSize.Width) ? availableSize.Width : Bounds.Width);
             var card = ChatCardRect(w, 0);
-            _inputTextBox.Measure(new Size(Math.Max(0, card.Width - ChatCardPadX * 2), double.PositiveInfinity));
+            double inputW = Math.Max(0, card.Width - ChatCardPadX * 2);
+            _inputTextBox.Measure(new Size(inputW, double.PositiveInfinity));
             _chatInputHeight = Math.Clamp(_inputTextBox.DesiredSize.Height, ChatInputMinHeight, ChatInputMaxHeight);
+            // Past the cap, measure again at the capped height so the box's own ScrollViewer
+            // gets a bounded viewport: it then shows a scrollbar and keeps the caret in view,
+            // where an unbounded measure leaves the extra lines clipped and unreachable
+            _inputTextBox.Measure(new Size(inputW, _chatInputHeight));
             _stopButton.Measure(new Size(w, ChatButtonSize));
             _expandButton.Measure(new Size(ChatButtonSize, ChatButtonSize));
             _chatAttachButton.Measure(new Size(ChatButtonSize, ChatButtonSize));
