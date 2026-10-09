@@ -684,6 +684,9 @@
                                         <CheckBox x:Name="ChkEnableErrorBanner" Content="Explain errors in a banner"
                                                   Foreground="{DynamicResource SubtleText}"
                                                   IsCheckedChanged="OnLiveStatusSettingChanged" />
+                                        <CheckBox x:Name="ChkCacheExpiryGuard" Content="Confirm before sending after the cache expires"
+                                                  Foreground="{DynamicResource SubtleText}"
+                                                  IsCheckedChanged="OnLiveStatusSettingChanged" />
                                         <CheckBox x:Name="ChkRateLimitStatusLine" Content="Get rate limits from Claude Code (adds a status line)"
                                                   Foreground="{DynamicResource SubtleText}"
                                                   IsCheckedChanged="OnLiveStatusSettingChanged" />

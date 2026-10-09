@@ -194,6 +194,13 @@ public partial class TerminalControl : Control, IDisposable
     /// <summary>Raised whenever the user submits a prompt, carrying the text when it is known.</summary>
     public event Action<string?>? PromptSubmitted;
 
+    /// <summary>
+    /// Asked before a prompt leaves for the CLI, with its text and a callback that sends it.
+    /// Returning false holds the prompt where it is - the shell uses this to stop a send into
+    /// a session whose prompt cache has lapsed, and calls the callback if the user goes ahead.
+    /// </summary>
+    public Func<string, Action, bool>? SubmitGate { get; set; }
+
     /// <summary>True while the CLI process is alive.</summary>
     public bool IsProcessRunning => _pty?.IsRunning == true;
 
@@ -470,6 +477,9 @@ public partial class TerminalControl : Control, IDisposable
             _docViewPanel?.SetQueue(_sendQueue.Select(q => q.Shown).ToList());
             return true;
         }
+
+        if (SubmitGate is { } gate && !gate(_inputTextBox.Text ?? "", () => SubmitChatInput()))
+            return true;
 
         _docViewPanel?.ShowPendingPrompt(_inputTextBox.Text ?? "");
         var text = JoinWithAttachments(_inputTextBox.Text ?? "");
@@ -1001,6 +1011,15 @@ public partial class TerminalControl : Control, IDisposable
                 && _promptSuggestion is { } suggested)
                 _inputTextBox.Text = suggested;
             if (_isDocumentView && SubmitChatInput())
+            {
+                e.Handled = true;
+                return;
+            }
+
+            // The plain terminal keeps the prompt in the CLI's own line, so holding it only
+            // means not pressing Enter yet; going ahead replays the key.
+            if (!_isDocumentView && SubmitGate is { } gate
+                && !gate(ghost ?? ReadSubmittedLine() ?? "", ReplayEnter))
             {
                 e.Handled = true;
                 return;
@@ -3684,6 +3703,9 @@ public partial class TerminalControl : Control, IDisposable
     /// straight to the PTY, so the only copy of it is what the CLI echoed into the cell grid;
     /// the CLI's own prompt decoration is trimmed off the front.
     /// </summary>
+    private void ReplayEnter() =>
+        OnInputKeyDown(this, new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+
     private string? ReadSubmittedLine()
     {
         try

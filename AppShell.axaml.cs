@@ -325,6 +325,12 @@ internal partial class AppShell : UserControl, IDockOwner
         public DateTime? LastTurnEndUtc { get; set; }
 
         /// <summary>
+        /// The <see cref="LastTurnEndUtc"/> the user already chose to send past with an expired
+        /// cache, so the next prompt in that same gap is not stopped a second time.
+        /// </summary>
+        public DateTime? ColdSendConfirmedFor { get; set; }
+
+        /// <summary>
         /// UTC time this window last actually raised the "answer ready" toast. Distinct from
         /// <see cref="LastTurnEndUtc"/>, which is stamped on every working -&gt; idle edge even
         /// when <see cref="NotifyTurnEnd"/> stays quiet (flicker turn, window in front, etc.) -
@@ -663,6 +669,7 @@ internal partial class AppShell : UserControl, IDockOwner
         LblLiveStatus.Text = Loc.Get("LiveStatus");
         ChkEnableLiveStatus.Content = Loc.Get("EnableLiveStatus");
         ChkEnableErrorBanner.Content = Loc.Get("EnableErrorBanner");
+        ChkCacheExpiryGuard.Content = Loc.Get("EnableCacheExpiryGuard");
         ChkRateLimitStatusLine.Content = Loc.Get("RateLimitStatusLine");
         ToolTip.SetTip(ChkRateLimitStatusLine, Loc.Get("RateLimitStatusLineTooltip"));
         LblPlanTier.Text = Loc.Get("PlanTier");
@@ -3423,6 +3430,7 @@ internal partial class AppShell : UserControl, IDockOwner
         ChkEnableCheckpoints.IsChecked = _settings.EnableCheckpoints;
         ChkEnableLiveStatus.IsChecked = _settings.EnableLiveStatus;
         ChkEnableErrorBanner.IsChecked = _settings.EnableErrorBanner;
+        ChkCacheExpiryGuard.IsChecked = _settings.EnableCacheExpiryGuard;
         ChkRateLimitStatusLine.IsChecked = _settings.RateLimitStatusLine;
         ChkCheckUpdate.IsChecked = _settings.CheckUpdateOnStartup;
         ChkGitAutoFetch.IsChecked = _settings.GitAutoFetch;
@@ -6042,6 +6050,14 @@ internal partial class AppShell : UserControl, IDockOwner
     private string? _extensionsNotice;
     /// <summary>Skills outnumber the rest by two orders of magnitude, so that section starts folded.</summary>
     private readonly HashSet<ExtensionKind> _extensionsCollapsed = new() { ExtensionKind.Skill };
+    /// <summary>Rows ordered by what they add to every turn instead of by name.</summary>
+    private bool _extensionsByTokens;
+
+    /// <summary>
+    /// Past this a CLAUDE.md stops being read closely and starts being paid for on every turn
+    /// anyway - the length both Anthropic and the zenn write-up give as the ceiling.
+    /// </summary>
+    private const int ResidentFileMaxLines = 200;
 
     private const int MaxExtensionRows = 150;
 
@@ -6098,6 +6114,7 @@ internal partial class AppShell : UserControl, IDockOwner
         if (_extensions == null) return;
 
         var query = TxtExtensionSearch.Text?.Trim() ?? "";
+        if (query.Length == 0) AddResidentSection(_extensions);
         int shown = 0;
         shown += AddExtensionSection(ExtensionKind.Mcp, Loc.Get("McpServers"), _extensions.Mcp, query);
         shown += AddExtensionSection(ExtensionKind.Skill, Loc.Get("Skills"), _extensions.Skills, query);
@@ -6112,6 +6129,8 @@ internal partial class AppShell : UserControl, IDockOwner
         IReadOnlyList<ExtensionItem> items, string query)
     {
         var matches = items.Where(i => MatchesExtensionQuery(i, query)).ToList();
+        if (_extensionsByTokens)
+            matches = matches.OrderByDescending(i => i.Tokens).ToList();
         // A search that hits nothing in a section should not leave its header behind.
         if (matches.Count == 0 && query.Length > 0) return 0;
 
@@ -6147,7 +6166,31 @@ internal partial class AppShell : UserControl, IDockOwner
     private Control BuildExtensionHeader(ExtensionKind kind, string title,
         List<ExtensionItem> items, bool open)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto") };
+
+        // Skills and plugins carry a token figure worth ranking by; servers do not.
+        if (kind != ExtensionKind.Mcp)
+        {
+            var sort = new Button
+            {
+                Content = new TextBlock { Text = _extensionsByTokens ? "≈↓" : "A↓", FontSize = 10 },
+                Padding = new Thickness(6, 1),
+                MinHeight = 0,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Opacity = 0.7,
+                Cursor = new Cursor(StandardCursorType.Hand),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            ToolTip.SetTip(sort, Loc.Get(_extensionsByTokens ? "SortByName" : "SortByTokens"));
+            sort.Click += (_, _) =>
+            {
+                _extensionsByTokens = !_extensionsByTokens;
+                RenderExtensions();
+            };
+            Grid.SetColumn(sort, 4);
+            grid.Children.Add(sort);
+        }
 
         // Adding, removing and health checks go through 'claude mcp', which only Claude Code has
         if (kind == ExtensionKind.Mcp && _cli.ActiveId == "claude")
@@ -6176,9 +6219,11 @@ internal partial class AppShell : UserControl, IDockOwner
             Opacity = 0.6,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        // Only what is switched on is paid for.
+        long tokens = items.Where(i => i.Enabled).Sum(i => i.Tokens);
         var label = new TextBlock
         {
-            Text = title + "  (" + items.Count + ")",
+            Text = title + "  (" + items.Count + ")" + (tokens > 0 ? "  ≈" + FormatTokens(tokens) : ""),
             FontSize = 10,
             FontWeight = FontWeight.SemiBold,
             LetterSpacing = 1,
@@ -6227,9 +6272,128 @@ internal partial class AppShell : UserControl, IDockOwner
         return header;
     }
 
+    /// <summary>
+    /// The files every session reads in full before the first prompt, with the figure the
+    /// transcripts say a fresh session actually started from - the part of each turn that
+    /// no amount of care in the conversation itself can shrink.
+    /// </summary>
+    private void AddResidentSection(ExtensionSnapshot snapshot)
+    {
+        var files = snapshot.Resident;
+        if (files.Count == 0 && snapshot.MeasuredBaseTokens == null) return;
+
+        long total = files.Sum(f => f.Tokens);
+        ExtensionsList.Children.Add(new Border
+        {
+            Padding = new Thickness(18, 9, 4, 3),
+            Child = new TextBlock
+            {
+                Text = Loc.Get("ResidentFiles") + "  (" + files.Count + ")" + (total > 0 ? "  ≈" + FormatTokens(total) : ""),
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                LetterSpacing = 1,
+                Opacity = 0.6,
+            },
+        });
+
+        if (snapshot.MeasuredBaseTokens is long measured)
+        {
+            var line = new TextBlock
+            {
+                Text = string.Format(Loc.Get("MeasuredBaseFmt"), FormatTokens(measured)),
+                FontSize = 10,
+                Opacity = 0.7,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(24, 0, 6, 4),
+            };
+            ToolTip.SetTip(line, Loc.Get("MeasuredBaseTip"));
+            ExtensionsList.Children.Add(line);
+        }
+
+        foreach (var file in files)
+            ExtensionsList.Children.Add(BuildResidentRow(file));
+    }
+
+    private Control BuildResidentRow(ResidentFile file)
+    {
+        bool tooLong = file.Lines > ResidentFileMaxLines;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(16, 0, 0, 0) };
+
+        var name = new TextBlock
+        {
+            Text = file.Label,
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var lines = new TextBlock
+        {
+            Text = string.Format(Loc.Get("ResidentLinesFmt"), file.Lines),
+            FontSize = 10,
+            Opacity = tooLong ? 1.0 : 0.5,
+            FontWeight = tooLong ? FontWeight.SemiBold : FontWeight.Normal,
+            Margin = new Thickness(6, 0, 2, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        // Assigning a null Foreground would blank the text instead of inheriting it.
+        if (tooLong) lines.Foreground = new SolidColorBrush(Color.FromRgb(255, 159, 10));
+        var tokens = TokenTag(file.Tokens);
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(lines, 1);
+        Grid.SetColumn(tokens, 2);
+        grid.Children.Add(name);
+        grid.Children.Add(lines);
+        grid.Children.Add(tokens);
+
+        var row = new Border
+        {
+            Padding = new Thickness(6, 4),
+            CornerRadius = new CornerRadius(4),
+            Background = Brushes.Transparent,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = grid,
+        };
+
+        var tip = file.Path + Environment.NewLine + Loc.Get("DoubleClickOpens");
+        if (tooLong) tip = string.Format(Loc.Get("ResidentTooLongFmt"), ResidentFileMaxLines) + Environment.NewLine + tip;
+        ToolTip.SetTip(row, tip);
+
+        var hover = new SolidColorBrush(_isDark
+            ? Color.FromArgb(30, 255, 255, 255)
+            : Color.FromArgb(20, 0, 0, 0));
+        row.PointerEntered += (_, _) => row.Background = hover;
+        row.PointerExited += (_, _) => row.Background = Brushes.Transparent;
+        row.DoubleTapped += (_, _) => OpenPath(file.Path);
+
+        var open = new MenuItem { Header = Loc.Get("Open") };
+        open.Click += (_, _) => OpenPath(file.Path);
+        row.ContextMenu = new ContextMenu { ItemsSource = new[] { open } };
+        return row;
+    }
+
+    /// <summary>"≈1k" right-hand figure shared by resident files and extension rows.</summary>
+    private static TextBlock TokenTag(long tokens) => new()
+    {
+        Text = tokens > 0 ? "≈" + FormatTokens(tokens) : "",
+        FontSize = 9,
+        Opacity = 0.55,
+        MinWidth = 34,
+        TextAlignment = TextAlignment.Right,
+        Margin = new Thickness(4, 0, 2, 0),
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+
+    private static string SkillModeLabel(string mode) => mode switch
+    {
+        ExtensionCatalog.SkillModeNameOnly => Loc.Get("SkillModeNameOnly"),
+        ExtensionCatalog.SkillModeUserOnly => Loc.Get("SkillModeUserOnly"),
+        ExtensionCatalog.SkillModeOff => Loc.Get("SkillModeOff"),
+        _ => Loc.Get("SkillModeOn"),
+    };
+
     private Control BuildExtensionRow(ExtensionItem item)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
 
         Control lead;
         if (item.CanToggle)
@@ -6291,9 +6455,12 @@ internal partial class AppShell : UserControl, IDockOwner
         // truncates to nothing in a narrow panel - so that one stays in the tooltip.
         if (item.Kind != ExtensionKind.Plugin)
         {
+            var sourceText = item.Source;
+            if (item.SkillMode is { } skillMode && skillMode != ExtensionCatalog.SkillModeOn)
+                sourceText += " · " + SkillModeLabel(skillMode);
             var source = new TextBlock
             {
-                Text = item.Source,
+                Text = sourceText,
                 FontSize = 9,
                 Opacity = 0.45,
                 MaxWidth = 84,
@@ -6303,6 +6470,14 @@ internal partial class AppShell : UserControl, IDockOwner
             };
             Grid.SetColumn(source, 2);
             grid.Children.Add(source);
+        }
+
+        if (item.Kind != ExtensionKind.Mcp)
+        {
+            var tokens = TokenTag(item.Tokens);
+            ToolTip.SetTip(tokens, Loc.Get("ExtensionTokensTip"));
+            Grid.SetColumn(tokens, 3);
+            grid.Children.Add(tokens);
         }
 
         var row = new Border
@@ -6323,6 +6498,9 @@ internal partial class AppShell : UserControl, IDockOwner
             tip += Environment.NewLine + string.Format(Loc.Get("SkillInvokeFmt"), SkillCommand(item));
         else if (!string.IsNullOrEmpty(item.Path))
             tip += Environment.NewLine + Loc.Get("DoubleClickOpens");
+        bool canSetMode = item.SkillMode != null && !string.IsNullOrEmpty(_projectFolder);
+        if (canSetMode)
+            tip += Environment.NewLine + Loc.Get("SkillModeHint");
         if (item.Kind == ExtensionKind.Mcp && !item.CanToggle)
             tip += Environment.NewLine + (item.Source == "user"
                 ? Loc.Get("McpUserScoped")
@@ -6347,14 +6525,41 @@ internal partial class AppShell : UserControl, IDockOwner
             else if (!string.IsNullOrEmpty(item.Path)) OpenPath(item.Path!);
         };
 
+        var menu = new List<Control>();
         if (!string.IsNullOrEmpty(item.Path))
         {
             var open = new MenuItem { Header = Loc.Get("Open") };
             open.Click += (_, _) => OpenPath(item.Path!);
-            row.ContextMenu = new ContextMenu { ItemsSource = new[] { open } };
+            menu.Add(open);
         }
+        if (canSetMode)
+        {
+            if (menu.Count > 0) menu.Add(new Separator());
+            foreach (var mode in new[]
+                     {
+                         ExtensionCatalog.SkillModeOn, ExtensionCatalog.SkillModeNameOnly,
+                         ExtensionCatalog.SkillModeUserOnly, ExtensionCatalog.SkillModeOff,
+                     })
+            {
+                var choice = new MenuItem
+                {
+                    Header = (mode == item.SkillMode ? "✓ " : "    ") + SkillModeLabel(mode),
+                };
+                choice.Click += (_, _) => ApplySkillMode(item, mode);
+                menu.Add(choice);
+            }
+        }
+        if (menu.Count > 0)
+            row.ContextMenu = new ContextMenu { ItemsSource = menu };
 
         return row;
+    }
+
+    private void ApplySkillMode(ExtensionItem item, string mode)
+    {
+        var project = _projectFolder;
+        if (string.IsNullOrEmpty(project) || mode == item.SkillMode) return;
+        ReportExtensionWrite(ExtensionCatalog.SetSkillMode(project, item.Name, mode), 1);
     }
 
     /// <summary>
@@ -6580,6 +6785,7 @@ internal partial class AppShell : UserControl, IDockOwner
 
         _settings.EnableLiveStatus = ChkEnableLiveStatus.IsChecked == true;
         _settings.EnableErrorBanner = ChkEnableErrorBanner.IsChecked == true;
+        _settings.EnableCacheExpiryGuard = ChkCacheExpiryGuard.IsChecked == true;
         _settings.RateLimitStatusLine = ChkRateLimitStatusLine.IsChecked == true;
         _cli.RateLimitStatusLine = _settings.RateLimitStatusLine;
         _settings.Save();
@@ -7353,6 +7559,119 @@ internal partial class AppShell : UserControl, IDockOwner
         return source.Task;
     }
 
+    // ── Expired prompt cache ──
+
+    /// <summary>
+    /// How long an idle session keeps its prompt cache on a subscription plan. Past this the
+    /// next prompt writes the whole conversation into the cache again at the uncached rate;
+    /// the 50-minute banner is the early warning, this is the last chance before paying.
+    /// </summary>
+    private static readonly int CacheExpiredMinutes =
+        int.TryParse(Environment.GetEnvironmentVariable("SNIPYARD_TEST_CACHE_EXPIRED_MINUTES"), out var minutes)
+            ? minutes : 60;
+
+    /// <summary>Below this a cold re-read costs cents - not worth stopping the user over.</summary>
+    private const long ColdSendMinTokens = 20_000;
+
+    private enum ColdSendChoice { Cancel, Send, Handoff }
+
+    /// <summary>
+    /// <see cref="TerminalControl.SubmitGate"/> for one window: true lets the prompt go, false
+    /// holds it while the user decides whether a cold re-read is worth it.
+    /// </summary>
+    private bool PassesCacheExpiryGate(MdiChildInfo child, string text, Action send)
+    {
+        if (!_settings.EnableCacheExpiryGuard || string.IsNullOrWhiteSpace(text)) return true;
+        if (child.LastTurnEndUtc is not DateTime lastTurnEnd
+            || DateTime.UtcNow - lastTurnEnd < TimeSpan.FromMinutes(CacheExpiredMinutes)
+            || child.ColdSendConfirmedFor == lastTurnEnd) return true;
+
+        var cost = child.Cost.Current;
+        if (!cost.HasData || cost.ContextTokens < ColdSendMinTokens) return true;
+
+        _ = ConfirmColdSendAsync(child, lastTurnEnd, cost.ContextTokens, cost.Model, text, send);
+        return false;
+    }
+
+    private async Task ConfirmColdSendAsync(MdiChildInfo child, DateTime lastTurnEnd,
+        long tokens, string model, string text, Action send)
+    {
+        var idle = DateTime.UtcNow - lastTurnEnd;
+        var idleText = idle.TotalHours >= 1.5
+            ? idle.TotalHours.ToString("0.#", CultureInfo.InvariantCulture) + "h"
+            : ((int)idle.TotalMinutes).ToString(CultureInfo.InvariantCulture) + "min";
+        var message = string.Format(Loc.Get("ColdSendDetailFmt"), idleText, FormatTokens(tokens),
+            FormatUsd(CostAnalytics.EstimateColdTurnCostUsd(model, tokens)),
+            FormatUsd(CostAnalytics.EstimateNextTurnCostUsd(model, tokens)));
+
+        switch (await ShowColdSendDialog(message))
+        {
+            case ColdSendChoice.Send:
+                child.ColdSendConfirmedFor = lastTurnEnd;
+                send();
+                break;
+            case ColdSendChoice.Handoff:
+                if (ResolveSessionPath(child) is { } path)
+                    await StartHandoffFromTranscriptAsync(path, text);
+                else
+                    await ShowConfirmDialog(Loc.Get("HandoffDialogTitle"), Loc.Get("HandoffNoSession"));
+                break;
+        }
+    }
+
+    private Task<ColdSendChoice> ShowColdSendDialog(string message)
+    {
+        var source = new TaskCompletionSource<ColdSendChoice>();
+
+        var text = new TextBlock
+        {
+            Text = message,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13,
+            Foreground = new SolidColorBrush(DialogForeground()),
+        };
+        Button Make(string label) => new()
+        {
+            Content = label,
+            MinWidth = 88,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+        };
+        var cancel = Make(Loc.Get("Cancel"));
+        var send = Make(Loc.Get("ColdSendAnyway"));
+        var handoff = Make(Loc.Get("ColdSendHandoff"));
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(send);
+        buttons.Children.Add(handoff);
+
+        var panel = new StackPanel { Spacing = 18, Margin = new Thickness(22, 20) };
+        panel.Children.Add(text);
+        panel.Children.Add(buttons);
+
+        var dialog = CreateToolDialog(Loc.Get("ColdSendTitle"), 480, 0);
+        dialog.SizeToContent = SizeToContent.Height;
+        dialog.Content = panel;
+
+        void Answer(ColdSendChoice choice)
+        {
+            source.TrySetResult(choice);
+            dialog.Close();
+        }
+        cancel.Click += (_, _) => Answer(ColdSendChoice.Cancel);
+        send.Click += (_, _) => Answer(ColdSendChoice.Send);
+        handoff.Click += (_, _) => Answer(ColdSendChoice.Handoff);
+        dialog.Closed += (_, _) => source.TrySetResult(ColdSendChoice.Cancel);
+
+        _ = dialog.ShowDialog(HostWindow);
+        return source.Task;
+    }
+
     // ── Launch profiles ──
 
     private void OnLaunchProfileChanged(object? sender, SelectionChangedEventArgs e)
@@ -7948,7 +8267,8 @@ internal partial class AppShell : UserControl, IDockOwner
     /// The hand-off proper, from any transcript on disk: the active window's, or one picked from
     /// the session list that was never opened in this run. Same brief, same dialog, same launch.
     /// </summary>
-    private async Task StartHandoffFromTranscriptAsync(string path)
+    /// <param name="followUp">A prompt the user had typed for the old session, carried to the end of the brief.</param>
+    private async Task StartHandoffFromTranscriptAsync(string path, string? followUp = null)
     {
         string brief;
         try { brief = await HandoffBuilder.BuildAsync(path); }
@@ -7959,6 +8279,9 @@ internal partial class AppShell : UserControl, IDockOwner
             await ShowConfirmDialog(Loc.Get("HandoffDialogTitle"), Loc.Get("HandoffEmpty"));
             return;
         }
+
+        if (!string.IsNullOrWhiteSpace(followUp))
+            brief = brief.TrimEnd() + Environment.NewLine + Environment.NewLine + followUp.Trim();
 
         string? edited = await ShowHandoffDialog(brief);
         if (string.IsNullOrWhiteSpace(edited)) return;
@@ -9045,6 +9368,7 @@ internal partial class AppShell : UserControl, IDockOwner
 
         // Snapshot the project just before each prompt, so it can be rolled back.
         terminal.PromptSubmitted += prompt => CaptureCheckpoint(entry, prompt);
+        terminal.SubmitGate = (text, send) => PassesCacheExpiryGate(entry, text, send);
 
         terminal.Clicked += () =>
         {

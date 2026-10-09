@@ -149,6 +149,13 @@ public static class CostAnalytics
     public static double EstimateNextTurnCostUsd(string model, long contextTokens)
         => EstimateCostUsd(model, 0, 0, contextTokens, 0);
 
+    /// <summary>
+    /// The same turn once the prompt cache has lapsed: the whole prefix is written to the
+    /// cache again instead of read from it.
+    /// </summary>
+    public static double EstimateColdTurnCostUsd(string model, long contextTokens)
+        => EstimateCostUsd(model, 0, 0, 0, contextTokens);
+
     private static double Compute(double inPrice, double outPrice, double? cacheReadPrice,
         long input, long output, long cacheRead, long cacheCreation)
     {

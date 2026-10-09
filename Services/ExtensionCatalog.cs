@@ -34,13 +34,32 @@ public sealed record ExtensionItem
     public string Id { get; init; } = "";
     /// <summary>Short right-hand annotation - what a plugin contributes, or a server's transport.</summary>
     public string? Detail { get; init; }
+    /// <summary>
+    /// Rough tokens this adds to every session before the first prompt, or 0 when it cannot be
+    /// told from the files - an MCP server's tool list only exists once it is running.
+    /// </summary>
+    public long Tokens { get; init; }
+    /// <summary>
+    /// A project or personal skill's skillOverrides value ("on", "name-only",
+    /// "user-invocable-only", "off"). Null for plugin skills, which the setting does not reach.
+    /// </summary>
+    public string? SkillMode { get; init; }
 }
+
+/// <summary>A file Claude Code reads in full at the start of every session.</summary>
+public sealed record ResidentFile(string Label, string Path, int Lines, long Tokens);
 
 public sealed record ExtensionSnapshot
 {
     public IReadOnlyList<ExtensionItem> Mcp { get; init; } = Array.Empty<ExtensionItem>();
     public IReadOnlyList<ExtensionItem> Skills { get; init; } = Array.Empty<ExtensionItem>();
     public IReadOnlyList<ExtensionItem> Plugins { get; init; } = Array.Empty<ExtensionItem>();
+    public IReadOnlyList<ResidentFile> Resident { get; init; } = Array.Empty<ResidentFile>();
+    /// <summary>
+    /// The smallest first-turn prefix among the project's recent sessions - what the CLI
+    /// actually sent before any conversation existed. Null when there is no transcript yet.
+    /// </summary>
+    public long? MeasuredBaseTokens { get; init; }
 }
 
 /// <summary>
@@ -82,7 +101,116 @@ public static class ExtensionCatalog
             Mcp = ReadMcp(projectFolder, plugins),
             Skills = ReadSkills(projectFolder, plugins),
             Plugins = plugins.Select(p => p.Item).ToList(),
+            Resident = ReadResidentFiles(projectFolder),
+            MeasuredBaseTokens = string.IsNullOrEmpty(projectFolder) ? null : MeasureBaseTokens(projectFolder),
         };
+    }
+
+    // ── Always-loaded files ──
+
+    /// <summary>
+    /// CLAUDE.md at both levels, the rules that apply everywhere, and the memory index - the
+    /// text every session carries in full before anything is asked. A rule with "paths:" in
+    /// its front matter only loads beside matching files, so it is left out.
+    /// </summary>
+    private static List<ResidentFile> ReadResidentFiles(string? projectFolder)
+    {
+        var files = new List<ResidentFile>();
+        Add("~/.claude/CLAUDE.md", System.IO.Path.Combine(UserClaudeDir, "CLAUDE.md"));
+        AddRules("~/.claude/rules/", System.IO.Path.Combine(UserClaudeDir, "rules"));
+
+        if (!string.IsNullOrEmpty(projectFolder))
+        {
+            Add("CLAUDE.md", System.IO.Path.Combine(projectFolder, "CLAUDE.md"));
+            Add(".claude/CLAUDE.md", System.IO.Path.Combine(projectFolder, ".claude", "CLAUDE.md"));
+            Add("CLAUDE.local.md", System.IO.Path.Combine(projectFolder, "CLAUDE.local.md"));
+            AddRules(".claude/rules/", System.IO.Path.Combine(projectFolder, ".claude", "rules"));
+            Add("memory/MEMORY.md",
+                System.IO.Path.Combine(ClaudeProjectPaths.MemoryDir(projectFolder), "MEMORY.md"));
+        }
+        return files;
+
+        void Add(string label, string path)
+        {
+            string text;
+            try
+            {
+                if (!File.Exists(path)) return;
+                text = File.ReadAllText(path);
+            }
+            catch { return; }
+            int lines = text.Length == 0 ? 0 : text.Count(c => c == '\n') + (text.EndsWith('\n') ? 0 : 1);
+            files.Add(new ResidentFile(label, path, lines, TokenEstimate.Of(text)));
+        }
+
+        void AddRules(string prefix, string dir)
+        {
+            if (!Directory.Exists(dir)) return;
+            List<string> rules;
+            try { rules = Directory.EnumerateFiles(dir, "*.md", SearchOption.AllDirectories).ToList(); }
+            catch { return; }
+            rules.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (var rule in rules)
+            {
+                if (FrontMatterLines(rule).Any(l => l.StartsWith("paths:", StringComparison.Ordinal))) continue;
+                Add(prefix + System.IO.Path.GetRelativePath(dir, rule).Replace('\\', '/'), rule);
+            }
+        }
+    }
+
+    /// <summary>How many recent transcripts to look at for the session-start figure.</summary>
+    private const int BaseSampleSessions = 8;
+
+    /// <summary>
+    /// The first assistant turn of a fresh session was answered against the system prompt,
+    /// tools, skills, CLAUDE.md and memory plus one short prompt - the fixed cost itself. A
+    /// resumed session's first turn carries its whole history, so the smallest across a few
+    /// recent sessions is the honest figure.
+    /// </summary>
+    private static long? MeasureBaseTokens(string projectFolder)
+    {
+        List<FileInfo> sessions;
+        try
+        {
+            var dir = new DirectoryInfo(ClaudeProjectPaths.ProjectDir(projectFolder));
+            if (!dir.Exists) return null;
+            sessions = dir.EnumerateFiles("*.jsonl")
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .Take(BaseSampleSessions)
+                .ToList();
+        }
+        catch { return null; }
+
+        long? best = null;
+        foreach (var file in sessions)
+        {
+            if (FirstPrefixTokens(file.FullName) is long tokens && (best == null || tokens < best))
+                best = tokens;
+        }
+        return best;
+    }
+
+    private static long? FirstPrefixTokens(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            for (int i = 0; i < 400 && reader.ReadLine() is { } line; i++)
+            {
+                if (!line.Contains("\"usage\"", StringComparison.Ordinal)) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    if (SessionCostMonitor.TryReadPrefixTokens(doc.RootElement, out long tokens, out _))
+                        return tokens;
+                }
+                catch (JsonException) { }
+            }
+        }
+        catch { }
+        return null;
     }
 
     // ── Plugins ──
@@ -116,6 +244,9 @@ public static class ExtensionCatalog
             var version = manifest?["version"]?.GetValue<string>();
 
             var skills = SkillFiles(installPath, declared.GetValueOrDefault(id));
+            long tokens = skills.Sum(HeaderTokens)
+                          + MarkdownFiles(System.IO.Path.Combine(installPath, "agents")).Sum(HeaderTokens)
+                          + MarkdownFiles(System.IO.Path.Combine(installPath, "commands")).Sum(HeaderTokens);
 
             result.Add(new PluginInfo(id, name, installPath, enabled, skills, new ExtensionItem
             {
@@ -128,6 +259,7 @@ public static class ExtensionCatalog
                 CanToggle = true,
                 Id = id,
                 Detail = DescribeContents(installPath, version, skills.Count),
+                Tokens = tokens,
             }));
         }
 
@@ -237,6 +369,23 @@ public static class ExtensionCatalog
         if (mcp > 0) parts.Add(string.Format(Loc.Get("NMcpFmt"), mcp));
 
         return string.Join("  ", parts);
+    }
+
+    private static List<string> MarkdownFiles(string dir)
+    {
+        if (!Directory.Exists(dir)) return new List<string>();
+        try { return Directory.EnumerateFiles(dir, "*.md", SearchOption.AllDirectories).ToList(); }
+        catch { return new List<string>(); }
+    }
+
+    /// <summary>
+    /// What a skill, agent or command costs before it is used: the CLI lists each one by name
+    /// and description, and reads the body only when it runs.
+    /// </summary>
+    private static long HeaderTokens(string file)
+    {
+        var (name, description) = ReadHeader(file);
+        return TokenEstimate.Of(name) + TokenEstimate.Of(description);
     }
 
     private static int CountFiles(string dir, string pattern)
@@ -395,46 +544,97 @@ public static class ExtensionCatalog
     private static List<ExtensionItem> ReadSkills(string? projectFolder, List<PluginInfo> plugins)
     {
         var items = new List<ExtensionItem>();
+        var modes = SkillModes(projectFolder);
 
         if (!string.IsNullOrEmpty(projectFolder))
             AddSkills(items,
-                SkillFilesUnder(System.IO.Path.Combine(projectFolder, ".claude", "skills")), "project", true);
+                SkillFilesUnder(System.IO.Path.Combine(projectFolder, ".claude", "skills")), "project", true, modes);
 
-        AddSkills(items, SkillFilesUnder(System.IO.Path.Combine(UserClaudeDir, "skills")), "user", true);
+        AddSkills(items, SkillFilesUnder(System.IO.Path.Combine(UserClaudeDir, "skills")), "user", true, modes);
 
         foreach (var plugin in plugins)
-            AddSkills(items, plugin.SkillFiles, plugin.Name, plugin.Enabled);
+            AddSkills(items, plugin.SkillFiles, plugin.Name, plugin.Enabled, null);
 
         return items;
     }
 
-    private static void AddSkills(List<ExtensionItem> items, List<string> files, string source, bool enabled)
+    /// <param name="modes">skillOverrides for project and personal skills; null for a plugin's.</param>
+    private static void AddSkills(List<ExtensionItem> items, List<string> files, string source, bool enabled,
+        Dictionary<string, string>? modes)
     {
         foreach (var file in files)
         {
-            var (name, description) = ReadSkillHeader(file);
+            var (header, description) = ReadHeader(file);
+            var name = header ?? System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(file)) ?? "skill";
+            var mode = modes?.GetValueOrDefault(name, SkillModeOn);
             items.Add(new ExtensionItem
             {
                 Kind = ExtensionKind.Skill,
-                Name = name ?? System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(file)) ?? "skill",
-                Description = description,
+                Name = name,
+                Description = Trim(description),
                 Source = source,
                 Path = file,
-                Enabled = enabled,
+                // "off" hides a skill from Claude and the slash menu alike - as good as not loaded.
+                Enabled = enabled && mode != SkillModeOff,
                 CanToggle = false,
                 Id = file,
+                // What Claude is shown: name and description, the name alone, or nothing.
+                Tokens = mode switch
+                {
+                    SkillModeNameOnly => TokenEstimate.Of(name),
+                    SkillModeUserOnly or SkillModeOff => 0,
+                    _ => TokenEstimate.Of(name) + TokenEstimate.Of(description),
+                },
+                SkillMode = mode,
             });
         }
     }
 
-    /// <summary>Pulls name and description out of the YAML front matter.</summary>
-    private static (string? Name, string? Description) ReadSkillHeader(string file)
+    public const string SkillModeOn = "on";
+    public const string SkillModeNameOnly = "name-only";
+    public const string SkillModeUserOnly = "user-invocable-only";
+    public const string SkillModeOff = "off";
+
+    /// <summary>
+    /// skillOverrides as the CLI layers it: personal settings, then the project's shared file,
+    /// then its local file - where /skills and Snipyard both write - on top.
+    /// </summary>
+    private static Dictionary<string, string> SkillModes(string? projectFolder)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        Merge(ReadJson(UserSettingsPath));
+        if (!string.IsNullOrEmpty(projectFolder))
+        {
+            Merge(ReadJson(System.IO.Path.Combine(projectFolder, ".claude", "settings.json")));
+            Merge(ReadJson(ProjectSettingsPath(projectFolder)));
+        }
+        return map;
+
+        void Merge(JsonNode? root)
+        {
+            if (root?["skillOverrides"] is not JsonObject overrides) return;
+            foreach (var kv in overrides)
+            {
+                if (kv.Value is JsonValue value && value.TryGetValue<string>(out var mode))
+                    map[kv.Key] = mode;
+            }
+        }
+    }
+
+    /// <summary>Pulls name and the untrimmed description out of the YAML front matter.</summary>
+    private static (string? Name, string? Description) ReadHeader(string file)
+    {
+        var lines = FrontMatterLines(file);
+        return (FrontMatter(lines, "name:"), FrontMatter(lines, "description:"));
+    }
+
+    private static List<string> FrontMatterLines(string file)
     {
         var lines = new List<string>();
         try
         {
             using var reader = new StreamReader(file);
-            if (reader.ReadLine()?.TrimEnd() != "---") return (null, null);
+            if (reader.ReadLine()?.TrimEnd() != "---") return lines;
 
             for (int i = 0; i < 60; i++)
             {
@@ -443,9 +643,8 @@ public static class ExtensionCatalog
                 lines.Add(line);
             }
         }
-        catch { return (null, null); }
-
-        return (FrontMatter(lines, "name:"), Trim(FrontMatter(lines, "description:")));
+        catch { lines.Clear(); }
+        return lines;
     }
 
     /// <summary>
@@ -525,6 +724,27 @@ public static class ExtensionCatalog
 
             // An empty allow-list is noise in a file the user also reads.
             if (list.Count == 0) root.Remove("disabledMcpjsonServers");
+        });
+
+    /// <summary>
+    /// Sets one skill's skillOverrides entry in the project's settings.local.json - the file
+    /// the CLI's own /skills screen writes. "on" is the default, so it removes the entry.
+    /// Returns null on success, else the error.
+    /// </summary>
+    public static string? SetSkillMode(string projectFolder, string skill, string mode) =>
+        Rewrite(ProjectSettingsPath(projectFolder), root =>
+        {
+            var map = root["skillOverrides"] as JsonObject;
+            if (map == null)
+            {
+                map = new JsonObject();
+                root["skillOverrides"] = map;
+            }
+
+            if (mode == SkillModeOn) map.Remove(skill);
+            else map[skill] = mode;
+
+            if (map.Count == 0) root.Remove("skillOverrides");
         });
 
     /// <summary>

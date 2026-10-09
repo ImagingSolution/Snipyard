@@ -73,6 +73,12 @@ public class AppSettings
     public bool EnableErrorBanner { get; set; } = true;
 
     /// <summary>
+    /// Ask before sending into a session idle past the prompt cache's lifetime, when the next
+    /// turn would re-read a large conversation at the uncached rate.
+    /// </summary>
+    public bool EnableCacheExpiryGuard { get; set; } = true;
+
+    /// <summary>
     /// Launch Claude sessions with a status line that hands the plan's rate limits to the status
     /// bar. Costs Claude Code's footer key hints, hence the switch.
     /// </summary>
