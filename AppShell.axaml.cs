@@ -2457,6 +2457,17 @@ internal partial class AppShell : UserControl, IDockOwner
     /// Click handlers afterwards, once it has an entry to give them. The marker is a dot unless
     /// <paramref name="icon"/> names a glyph to draw in its place.
     /// </summary>
+    /// <summary>
+    /// A multi-line prompt names its window by its first non-blank line, as the Chat View header
+    /// does, so a tab or title bar never grows taller than one row.
+    /// </summary>
+    private static string FirstLine(string title)
+    {
+        foreach (var line in title.Split('\n'))
+            if (!string.IsNullOrWhiteSpace(line)) return line.Trim();
+        return title.Trim();
+    }
+
     private static StripTab BuildStripButton(string title, Color dotColor, bool isDark, Geometry? icon = null)
     {
         var dot = icon != null ? null : new Ellipse
@@ -2474,7 +2485,7 @@ internal partial class AppShell : UserControl, IDockOwner
         };
         var text = new TextBlock
         {
-            Text = title,
+            Text = FirstLine(title),
             FontSize = 11,
             FontFamily = TitleFontFamily,
             VerticalAlignment = VerticalAlignment.Center,
@@ -5374,10 +5385,11 @@ internal partial class AppShell : UserControl, IDockOwner
         if (string.IsNullOrWhiteSpace(title)) return false;
 
         entry.SessionTitle = title;
-        if (entry.StripText.Text == title && entry.TitleText.Text == title) return false;
+        var shown = FirstLine(title);
+        if (entry.StripText.Text == shown && entry.TitleText.Text == shown) return false;
 
-        entry.TitleText.Text = title;
-        entry.StripText.Text = title;
+        entry.TitleText.Text = shown;
+        entry.StripText.Text = shown;
         entry.FirstInput = title;
         RefreshWindowsPanel();
         return true;
@@ -9199,7 +9211,7 @@ internal partial class AppShell : UserControl, IDockOwner
         var initialTitle = !string.IsNullOrEmpty(firstInput) ? firstInput : tabTitle;
         var titleText = new TextBlock
         {
-            Text = initialTitle,
+            Text = FirstLine(initialTitle),
             FontSize = 13,
             FontWeight = FontWeight.Normal,
             FontFamily = TitleFontFamily,
@@ -9398,8 +9410,8 @@ internal partial class AppShell : UserControl, IDockOwner
             var displayTitle = icon != null && !baseTitle.StartsWith(icon, StringComparison.Ordinal)
                 ? $"{icon} {baseTitle}"
                 : baseTitle;
-            titleText.Text = displayTitle;
-            stripText.Text = displayTitle;
+            titleText.Text = FirstLine(displayTitle);
+            stripText.Text = FirstLine(displayTitle);
             RefreshWindowsPanel();
         };
 
