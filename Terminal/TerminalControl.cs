@@ -2857,7 +2857,15 @@ public partial class TerminalControl : Control, IDisposable
     {
         // Move text to normal input (send to PTY without submitting)
         var text = _expandedTextBox.Text;
-        if (!string.IsNullOrEmpty(text))
+        if (_isDocumentView)
+        {
+            // The chat composer is the input there; text typed into the PTY line would be
+            // out of sight, so it goes back into the composer it came from
+            _inputTextBox.Text = text ?? "";
+            _inputTextBox.CaretIndex = _inputTextBox.Text.Length;
+            _expandedTextBox.Text = "";
+        }
+        else if (!string.IsNullOrEmpty(text))
         {
             // Normalize to single \n, then remove consecutive blank lines
             var normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
