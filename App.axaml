@@ -192,6 +192,7 @@
         <SolidColorBrush x:Key="AccentBlue" Color="#007AFF" />
         <SolidColorBrush x:Key="AccentGreen" Color="#30D158" />
         <SolidColorBrush x:Key="SubtleText" Color="#98989D" />
+        <SolidColorBrush x:Key="MeterTrackBg" Color="#30FFFFFF" />
         <SolidColorBrush x:Key="DividerColor" Color="#38383A" />
         <SolidColorBrush x:Key="ActivityBarBg" Color="#1C1C1E" />
         <SolidColorBrush x:Key="SidePanelBg" Color="#2C2C2E" />

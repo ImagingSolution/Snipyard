@@ -34,6 +34,7 @@ public partial class App : Application
             Resources["StatusBarBg"] = new SolidColorBrush(Color.Parse("#1C1C1E"));
             Resources["SurfaceBg"] = new SolidColorBrush(Color.Parse("#000000"));
             Resources["SubtleText"] = new SolidColorBrush(Color.Parse("#98989D"));
+            Resources["MeterTrackBg"] = new SolidColorBrush(Color.Parse("#30FFFFFF"));
             Resources["AccentText"] = new SolidColorBrush(Color.Parse("#64A5FF"));
             Resources["DangerText"] = new SolidColorBrush(Color.Parse("#FF6B6B"));
             Resources["DividerColor"] = new SolidColorBrush(Color.Parse("#38383A"));
@@ -47,6 +48,7 @@ public partial class App : Application
             Resources["StatusBarBg"] = new SolidColorBrush(Color.Parse("#E5E5EA"));
             Resources["SurfaceBg"] = new SolidColorBrush(Color.Parse("#FFFFFF"));
             Resources["SubtleText"] = new SolidColorBrush(Color.Parse("#54545C"));
+            Resources["MeterTrackBg"] = new SolidColorBrush(Color.Parse("#1A000000"));
             Resources["AccentText"] = new SolidColorBrush(Color.Parse("#005AC8"));
             Resources["DangerText"] = new SolidColorBrush(Color.Parse("#BE2323"));
             Resources["DividerColor"] = new SolidColorBrush(Color.Parse("#C6C6C8"));

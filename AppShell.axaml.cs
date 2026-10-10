@@ -3648,6 +3648,7 @@ internal partial class AppShell : UserControl, IDockOwner
             res["StatusBarBg"] = new SolidColorBrush(Color.FromRgb(28, 28, 30));
             res["SurfaceBg"] = new SolidColorBrush(Color.FromRgb(0, 0, 0));
             res["SubtleText"] = new SolidColorBrush(Color.FromRgb(152, 152, 157));
+            res["MeterTrackBg"] = new SolidColorBrush(Color.FromArgb(48, 255, 255, 255));
             res["AccentText"] = new SolidColorBrush(Color.FromRgb(100, 165, 255));
             res["DangerText"] = new SolidColorBrush(Color.FromRgb(255, 107, 107));
             res["DividerColor"] = new SolidColorBrush(Color.FromRgb(56, 56, 58));
@@ -3660,6 +3661,7 @@ internal partial class AppShell : UserControl, IDockOwner
             res["StatusBarBg"] = new SolidColorBrush(Color.FromRgb(232, 232, 237));
             res["SurfaceBg"] = new SolidColorBrush(Color.FromRgb(246, 246, 248));
             res["SubtleText"] = new SolidColorBrush(Color.FromRgb(84, 84, 92));
+            res["MeterTrackBg"] = new SolidColorBrush(Color.FromArgb(26, 0, 0, 0));
             res["AccentText"] = new SolidColorBrush(Color.FromRgb(0, 90, 200));
             res["DangerText"] = new SolidColorBrush(Color.FromRgb(190, 35, 35));
             res["DividerColor"] = new SolidColorBrush(Color.FromRgb(200, 200, 205));
