@@ -66,10 +66,10 @@ public sealed partial class SourceControlPanel
         _btnStash.MinHeight = 0;
         _btnStash.HorizontalAlignment = HorizontalAlignment.Right;
         _btnStash.VerticalAlignment = VerticalAlignment.Top;
-        _btnStash.Margin = new Thickness(0, 2, 26, 0);
+        _btnStash.Margin = new Thickness(0, 2, 8, 0);
 
         // The fold section has no slot for an action on its heading, so the button floats over
-        // the heading's right end, left of the drop marker. It is a sibling, not a child, so a
+        // the heading's right end. It is a sibling, not a child, so a
         // click on it does not also fold the section.
         _stashHost = new Grid { IsVisible = false };
         _stashHost.Children.Add(_stashSection);

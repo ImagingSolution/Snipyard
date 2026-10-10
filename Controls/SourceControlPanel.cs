@@ -2716,11 +2716,8 @@ public sealed partial class SourceControlPanel : UserControl
     {
         private const string Folded = "▸";
         private const string Unfolded = "▾";
-        private const string FoldedDrop = "▼";
-        private const string UnfoldedDrop = "▲";
 
         private readonly TextBlock _chevron;
-        private readonly TextBlock _drop;
         private readonly TextBlock _label;
         private readonly Control _body;
         private bool _isOpen;
@@ -2733,8 +2730,8 @@ public sealed partial class SourceControlPanel : UserControl
             _chevron = new TextBlock
             {
                 Text = Folded,
-                Width = 12,
-                FontSize = 9,
+                Width = 18,
+                FontSize = 13.5,
                 Foreground = new SolidColorBrush(text),
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -2748,28 +2745,11 @@ public sealed partial class SourceControlPanel : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
-            // A second marker at the panel edge, where a drop-down keeps its arrow. The heading
-            // reads as a heading, and a heading is not obviously something to click - the left
-            // chevron is small and easy to take for a bullet, so the affordance is repeated
-            // where the eye already looks for one.
-            _drop = new TextBlock
-            {
-                Text = FoldedDrop,
-                FontSize = 8,
-                Opacity = 0.75,
-                Margin = new Thickness(6, 0, 2, 0),
-                Foreground = new SolidColorBrush(text),
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
             Grid.SetColumn(_chevron, 0);
             Grid.SetColumn(_label, 1);
-            Grid.SetColumn(_drop, 2);
             grid.Children.Add(_chevron);
             grid.Children.Add(_label);
-            grid.Children.Add(_drop);
 
             var header = new Border
             {
@@ -2807,7 +2787,6 @@ public sealed partial class SourceControlPanel : UserControl
             {
                 _isOpen = value;
                 _chevron.Text = value ? Unfolded : Folded;
-                _drop.Text = value ? UnfoldedDrop : FoldedDrop;
                 _body.IsVisible = value;
             }
         }
