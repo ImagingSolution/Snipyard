@@ -8246,14 +8246,14 @@ internal partial class AppShell : UserControl, IDockOwner
         Dispatcher.UIThread.Post(() =>
         {
             ApplyRateLimitWindow(info?.FiveHour, StatusFiveHourPanel, StatusFiveHourText,
-                StatusFiveHourFill, "RateLimit5hTooltip");
+                StatusFiveHourFill, StatusFiveHourPace, TimeSpan.FromHours(5), "RateLimit5hTooltip");
             ApplyRateLimitWindow(info?.SevenDay, StatusSevenDayPanel, StatusSevenDayText,
-                StatusSevenDayFill, "RateLimit7dTooltip");
+                StatusSevenDayFill, StatusSevenDayPace, TimeSpan.FromDays(7), "RateLimit7dTooltip");
         });
     }
 
     private void ApplyRateLimitWindow(RateLimitWindow? window, StackPanel panel, TextBlock text,
-        Border fill, string tooltipKey)
+        Border fill, Avalonia.Controls.Shapes.Path pace, TimeSpan length, string tooltipKey)
     {
         panel.IsVisible = window != null;
         if (window == null) return;
@@ -8267,6 +8267,16 @@ internal partial class AppShell : UserControl, IDockOwner
 
         fill.Width = 48 * (pct / 100.0);
         fill.Background = MeterFill(pct);
+
+        // The triangle sits at how far through the window we are, so the fill running past it
+        // means the limit is being spent faster than time is passing. The readout refreshes
+        // every minute, which is fine-grained enough for a 48px bar.
+        pace.IsVisible = window.ResetsAt != null;
+        if (window.ResetsAt is { } resetsAt)
+        {
+            double elapsed = 1 - (resetsAt - DateTimeOffset.UtcNow) / length;
+            pace.Margin = new Thickness(48 * Math.Clamp(elapsed, 0, 1) - 3, -5, 0, 0);
+        }
     }
 
     private static string FormatUsd(double usd) =>

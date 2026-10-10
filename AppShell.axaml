@@ -224,11 +224,18 @@
                     <TextBlock Text="5h"
                                Foreground="{DynamicResource SubtleText}" FontSize="11"
                                VerticalAlignment="Center" />
-                    <Border Width="48" Height="6" CornerRadius="3" Background="#30FFFFFF"
-                            VerticalAlignment="Center">
-                        <Border x:Name="StatusFiveHourFill" Height="6" CornerRadius="3"
-                                Background="#30D158" HorizontalAlignment="Left" Width="0" />
-                    </Border>
+                    <!-- The triangle above the bar marks how much of the window has elapsed;
+                         it hangs outside the bar's 5px so the row keeps its height. -->
+                    <Panel Width="48" Height="5" VerticalAlignment="Center">
+                        <Border CornerRadius="2.5" Background="#30FFFFFF">
+                            <Border x:Name="StatusFiveHourFill" Height="5" CornerRadius="2.5"
+                                    Background="#30D158" HorizontalAlignment="Left" Width="0" />
+                        </Border>
+                        <Path x:Name="StatusFiveHourPace" Data="M0,0 L6,0 L3,4 Z"
+                              Fill="{DynamicResource SubtleText}" Opacity="0.65" IsVisible="False"
+                              HorizontalAlignment="Left" VerticalAlignment="Top"
+                              Margin="0,-5,0,0" />
+                    </Panel>
                     <TextBlock x:Name="StatusFiveHourText" Text=""
                                Foreground="{DynamicResource SubtleText}" FontSize="11"
                                VerticalAlignment="Center" />
@@ -239,11 +246,16 @@
                     <TextBlock Text="7d"
                                Foreground="{DynamicResource SubtleText}" FontSize="11"
                                VerticalAlignment="Center" />
-                    <Border Width="48" Height="6" CornerRadius="3" Background="#30FFFFFF"
-                            VerticalAlignment="Center">
-                        <Border x:Name="StatusSevenDayFill" Height="6" CornerRadius="3"
-                                Background="#30D158" HorizontalAlignment="Left" Width="0" />
-                    </Border>
+                    <Panel Width="48" Height="5" VerticalAlignment="Center">
+                        <Border CornerRadius="2.5" Background="#30FFFFFF">
+                            <Border x:Name="StatusSevenDayFill" Height="5" CornerRadius="2.5"
+                                    Background="#30D158" HorizontalAlignment="Left" Width="0" />
+                        </Border>
+                        <Path x:Name="StatusSevenDayPace" Data="M0,0 L6,0 L3,4 Z"
+                              Fill="{DynamicResource SubtleText}" Opacity="0.65" IsVisible="False"
+                              HorizontalAlignment="Left" VerticalAlignment="Top"
+                              Margin="0,-5,0,0" />
+                    </Panel>
                     <TextBlock x:Name="StatusSevenDayText" Text=""
                                Foreground="{DynamicResource SubtleText}" FontSize="11"
                                VerticalAlignment="Center" />
