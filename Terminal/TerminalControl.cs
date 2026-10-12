@@ -1462,11 +1462,17 @@ public partial class TerminalControl : Control, IDisposable
             var card = ChatCardRect(w, 0);
             double inputW = Math.Max(0, card.Width - ChatCardPadX * 2);
             _inputTextBox.Measure(new Size(inputW, double.PositiveInfinity));
-            _chatInputHeight = Math.Clamp(_inputTextBox.DesiredSize.Height, ChatInputMinHeight, ChatInputMaxHeight);
+            double inputH = _inputTextBox.DesiredSize.Height;
+            _chatInputHeight = Math.Clamp(inputH, ChatInputMinHeight, ChatInputMaxHeight);
             // Past the cap, measure again at the capped height so the box's own ScrollViewer
             // gets a bounded viewport: it then shows a scrollbar and keeps the caret in view,
-            // where an unbounded measure leaves the extra lines clipped and unreachable
-            _inputTextBox.Measure(new Size(inputW, _chatInputHeight));
+            // where an unbounded measure leaves the extra lines clipped and unreachable.
+            // Only past it: the box re-measures itself with the last constraint once its text
+            // layout catches up with a new line, and a constraint pinned at the old height hides
+            // the growth from this control, so the box stays a line short with its first line
+            // scrolled out of view until the next keystroke
+            if (inputH > ChatInputMaxHeight)
+                _inputTextBox.Measure(new Size(inputW, _chatInputHeight));
             _stopButton.Measure(new Size(w, ChatButtonSize));
             _expandButton.Measure(new Size(ChatButtonSize, ChatButtonSize));
             _chatAttachButton.Measure(new Size(ChatButtonSize, ChatButtonSize));
