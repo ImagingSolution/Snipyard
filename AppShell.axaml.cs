@@ -8281,6 +8281,20 @@ internal partial class AppShell : UserControl, IDockOwner
         {
             double elapsed = 1 - (resetsAt - DateTimeOffset.UtcNow) / length;
             pace.Margin = new Thickness(48 * Math.Clamp(elapsed, 0, 1) - 3, -5, 0, 0);
+
+            // Turn the triangle red while the fill is ahead of it, so overspending reads at a
+            // glance. Back on pace it re-binds to SubtleText so it still follows theme changes.
+            bool ahead = pct / 100.0 > elapsed;
+            if (ahead)
+            {
+                pace.Fill = MeterFill(100);
+                pace.Opacity = 1;
+            }
+            else
+            {
+                pace.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, pace.GetResourceObservable("SubtleText"));
+                pace.Opacity = 0.65;
+            }
         }
     }
 
