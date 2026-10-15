@@ -221,6 +221,13 @@ public class ActivityButtonDef
     /// </summary>
     public const string CompactPrompt = @"/compact\r";
 
-    public static List<ActivityButtonDef> CreateDefaults() =>
-        new() { new() { Id = CompactId, IconKey = "compact", Prompt = CompactPrompt } };
+    /// <summary>Id of the stock /clear button, which sits above the compact one.</summary>
+    public const string ClearId = "clear";
+    public const string ClearPrompt = @"/clear\r";
+
+    public static List<ActivityButtonDef> CreateDefaults() => new()
+    {
+        new() { Id = ClearId, IconKey = "eraser", Prompt = ClearPrompt },
+        new() { Id = CompactId, IconKey = "compact", Prompt = CompactPrompt },
+    };
 }

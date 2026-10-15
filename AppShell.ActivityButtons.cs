@@ -82,6 +82,8 @@ internal partial class AppShell
         if (!string.IsNullOrWhiteSpace(def.Tooltip)) return def.Tooltip.Trim();
         if (def.Id == ActivityButtonDef.CompactId && def.Prompt == ActivityButtonDef.CompactPrompt)
             return Loc.Get("CompactTooltip");
+        if (def.Id == ActivityButtonDef.ClearId && def.Prompt == ActivityButtonDef.ClearPrompt)
+            return Loc.Get("ClearTooltip");
         return FirstLine(def.Prompt);
     }
 

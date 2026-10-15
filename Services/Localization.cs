@@ -106,6 +106,7 @@ public static class Loc
         ["ExplorerTooltip"] = new() { ["English"] = "Explorer (Ctrl+Shift+E)", ["日本語"] = "エクスプローラー (Ctrl+Shift+E)" },
         ["SnippetsTooltip"] = new() { ["English"] = "Snippets", ["日本語"] = "スニペット" },
         ["CompactTooltip"] = new() { ["English"] = "Compact (/compact)", ["日本語"] = "コンパクト (/compact)" },
+        ["ClearTooltip"] = new() { ["English"] = "Clear (/clear)", ["日本語"] = "Clear (/clear)" },
         ["ActivityBtnCustomize"] = new() { ["English"] = "Customize...", ["日本語"] = "カスタマイズ..." },
         ["ActivityBtnDelete"] = new() { ["English"] = "Delete", ["日本語"] = "削除" },
         ["ActivityBtnAdd"] = new() { ["English"] = "Add Button...", ["日本語"] = "ボタンを追加..." },
