@@ -79,12 +79,22 @@ internal partial class AppShell
     /// </summary>
     private static string ActivityButtonLabel(ActivityButtonDef def)
     {
+        var tooltip = ActivityButtonTooltip(def);
+        return tooltip.Length > 0 ? tooltip : FirstLine(def.Prompt);
+    }
+
+    /// <summary>
+    /// The tooltip the button shows, short of the prompt fallback: its own, or the stock
+    /// wording of an untouched compact/clear button. Empty when neither applies.
+    /// </summary>
+    private static string ActivityButtonTooltip(ActivityButtonDef def)
+    {
         if (!string.IsNullOrWhiteSpace(def.Tooltip)) return def.Tooltip.Trim();
         if (def.Id == ActivityButtonDef.CompactId && def.Prompt == ActivityButtonDef.CompactPrompt)
             return Loc.Get("CompactTooltip");
         if (def.Id == ActivityButtonDef.ClearId && def.Prompt == ActivityButtonDef.ClearPrompt)
             return Loc.Get("ClearTooltip");
-        return FirstLine(def.Prompt);
+        return "";
     }
 
     private async Task AddActivityButton()
@@ -176,7 +186,7 @@ internal partial class AppShell
 
         var tipBox = new TextBox
         {
-            Text = existing?.Tooltip ?? "",
+            Text = existing != null ? ActivityButtonTooltip(existing) : "",
             PlaceholderText = Loc.Get("ActivityBtnTooltipHint"),
             FontSize = 13,
             Padding = new Thickness(8, 6),
