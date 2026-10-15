@@ -565,7 +565,6 @@ internal partial class AppShell : UserControl, IDockOwner
         ToolTip.SetTip(BtnActivityWindows, Loc.Get("WindowsTooltip"));
         ToolTip.SetTip(BtnActivityDiagram, Loc.Get("DiagramTooltip"));
         ToolTip.SetTip(BtnActivityDocView, Loc.Get("DocViewTooltip"));
-        ToolTip.SetTip(BtnActivityCompact, Loc.Get("CompactTooltip"));
         ToolTip.SetTip(BtnActivitySettings, Loc.Get("SettingsTooltip"));
 
         // Side Panel title (if open)
@@ -845,7 +844,7 @@ internal partial class AppShell : UserControl, IDockOwner
         // terminal output, which breaks whenever Claude changes its renderer. The
         // handler and inline rendering are still live — restore this line and drop
         // IsVisible="False" in the axaml to bring the button back.
-        BtnActivityCompact.IsVisible = features.CompactButton;
+        RebuildCustomActivityButtons();
 
         // Launch profiles are per-CLI; a CLI that defines none keeps the picker hidden.
         _profiles = _cli.ActiveProfiles.ToList();
@@ -3740,6 +3739,28 @@ internal partial class AppShell : UserControl, IDockOwner
     private static string NormalizeSnippetNewlines(string text)
         => SnippetEnterRegex.Replace(SnippetLineBreakRegex.Replace(text, "\n"), "\r");
 
+    /// <summary>
+    /// Sends snippet-style text (\r / \n escapes press Enter) to the active window, through
+    /// whichever input it is showing. Shared by the snippet panel and the activity-bar buttons.
+    /// </summary>
+    private void SendSnippetToActive(string? text)
+    {
+        if (_activeChildIndex < 0 || _activeChildIndex >= _children.Count
+            || string.IsNullOrEmpty(text)) return;
+        var terminal = _children[_activeChildIndex].Terminal;
+        var snippetText = NormalizeSnippetNewlines(text);
+        if (terminal.IsDocumentView && terminal.IsExpanded)
+            terminal.AppendToExpandedInput(snippetText);
+        else if (terminal.IsDocumentView)
+            terminal.SubmitSnippet(snippetText);
+        else if (terminal.IsExpanded)
+            terminal.AppendToExpandedInput(snippetText);
+        else
+            terminal.SendSnippet(snippetText);
+        if (_activeChild != null) ActivateTerminal(_activeChild);
+        terminal.FocusTerminal();
+    }
+
     private void LoadSnippetsPanel()
     {
         _snippetsInitialized = true;
@@ -3850,25 +3871,7 @@ internal partial class AppShell : UserControl, IDockOwner
         };
         ToolTip.SetTip(sendBtn, Loc.Get("SendToConsole"));
 
-        sendBtn.Click += (_, _) =>
-        {
-            if (_activeChildIndex >= 0 && _activeChildIndex < _children.Count
-                && !string.IsNullOrEmpty(textBox.Text))
-            {
-                var terminal = _children[_activeChildIndex].Terminal;
-                var snippetText = NormalizeSnippetNewlines(textBox.Text);
-                if (terminal.IsDocumentView && terminal.IsExpanded)
-                    terminal.AppendToExpandedInput(snippetText);
-                else if (terminal.IsDocumentView)
-                    terminal.SubmitSnippet(snippetText);
-                else if (terminal.IsExpanded)
-                    terminal.AppendToExpandedInput(snippetText);
-                else
-                    terminal.SendSnippet(snippetText);
-                if (_activeChild != null) ActivateTerminal(_activeChild);
-                terminal.FocusTerminal();
-            }
-        };
+        sendBtn.Click += (_, _) => SendSnippetToActive(textBox.Text);
 
         var grid = new Grid
         {

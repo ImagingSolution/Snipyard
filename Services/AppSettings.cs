@@ -141,6 +141,13 @@ public class AppSettings
     /// </summary>
     public Dictionary<string, string> AgentDisplayNames { get; set; } = new();
 
+    /// <summary>
+    /// Prompt buttons at the foot of the activity bar, top to bottom. Null means the user has
+    /// never touched them and gets the stock /compact button; an empty list means they deleted
+    /// every one, which has to stay that way across restarts.
+    /// </summary>
+    public List<ActivityButtonDef>? ActivityButtons { get; set; }
+
     // ── Updates ──
 
     /// <summary>Ask GitHub for a newer release at startup and offer to install it.</summary>
@@ -194,4 +201,26 @@ public class AppSettings
         }
         catch { }
     }
+}
+
+/// <summary>One user-defined activity-bar button: an icon and the prompt it sends.</summary>
+public class ActivityButtonDef
+{
+    /// <summary>Id of the stock /compact button, which only shows for a CLI that has /compact.</summary>
+    public const string CompactId = "compact";
+
+    public string Id { get; set; } = "";
+    public string IconKey { get; set; } = "";
+    public string Prompt { get; set; } = "";
+
+    /// <summary>Hover text; empty falls back to the prompt's first line.</summary>
+    public string Tooltip { get; set; } = "";
+
+    /// <summary>
+    /// Snippet-style text: the escape text \r presses Enter, so this types /compact and sends it.
+    /// </summary>
+    public const string CompactPrompt = @"/compact\r";
+
+    public static List<ActivityButtonDef> CreateDefaults() =>
+        new() { new() { Id = CompactId, IconKey = "compact", Prompt = CompactPrompt } };
 }

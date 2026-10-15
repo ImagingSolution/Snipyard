@@ -106,6 +106,20 @@ public static class Loc
         ["ExplorerTooltip"] = new() { ["English"] = "Explorer (Ctrl+Shift+E)", ["日本語"] = "エクスプローラー (Ctrl+Shift+E)" },
         ["SnippetsTooltip"] = new() { ["English"] = "Snippets", ["日本語"] = "スニペット" },
         ["CompactTooltip"] = new() { ["English"] = "Compact (/compact)", ["日本語"] = "コンパクト (/compact)" },
+        ["ActivityBtnCustomize"] = new() { ["English"] = "Customize...", ["日本語"] = "カスタマイズ..." },
+        ["ActivityBtnDelete"] = new() { ["English"] = "Delete", ["日本語"] = "削除" },
+        ["ActivityBtnAdd"] = new() { ["English"] = "Add Button...", ["日本語"] = "ボタンを追加..." },
+        ["ActivityBtnAddTitle"] = new() { ["English"] = "Add Button", ["日本語"] = "ボタンを追加" },
+        ["ActivityBtnEditTitle"] = new() { ["English"] = "Customize Button", ["日本語"] = "ボタンのカスタマイズ" },
+        ["ActivityBtnIcon"] = new() { ["English"] = "Icon", ["日本語"] = "アイコン" },
+        ["ActivityBtnPrompt"] = new() { ["English"] = "Prompt to send - as in snippets, \\r or \\n presses Enter (Ctrl+Enter to confirm)", ["日本語"] = "送信するプロンプト - スニペットと同様に \\r・\\n で Enter（Ctrl+Enter で確定）" },
+        ["ActivityBtnPromptHint"] = new() { ["English"] = "e.g. /compact\\r", ["日本語"] = "例: /compact\\r" },
+        ["ActivityBtnTooltip"] = new() { ["English"] = "Tooltip", ["日本語"] = "ツールチップ" },
+        ["ActivityBtnTooltipHint"] = new() { ["English"] = "Blank shows the prompt's first line", ["日本語"] = "空欄ならプロンプトの1行目を表示" },
+        ["ActivityBtnAddButton"] =new() { ["English"] = "Add", ["日本語"] = "追加" },
+        ["ActivityBtnDeleteTitle"] = new() { ["English"] = "Delete Button", ["日本語"] = "ボタンの削除" },
+        // {0} = first line of the button's prompt
+        ["ActivityBtnDeleteConfirm"] = new() { ["English"] = "Delete the button that sends \"{0}\"?", ["日本語"] = "「{0}」を送信するボタンを削除しますか？" },
         ["SettingsTooltip"] = new() { ["English"] = "Settings", ["日本語"] = "設定" },
 
         // ── Side Panel Titles ──
