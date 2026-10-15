@@ -91,7 +91,8 @@ internal partial class AppShell
     {
         var def = await ShowActivityButtonDialog(null);
         if (def == null) return;
-        ActivityButtons.Add(def);
+        // On top of the bottom group, so the new button lands nearest the spot that was clicked
+        ActivityButtons.Insert(0, def);
         _settings.Save();
         RebuildCustomActivityButtons();
     }
