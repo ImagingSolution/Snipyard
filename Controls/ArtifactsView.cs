@@ -174,6 +174,18 @@ public sealed class ArtifactsView : UserControl
             Select(entry, reload: true);
             e.Handled = true;
         };
+        // The source file usually sits in a session scratchpad that gets cleared, so whether it can
+        // be shown is decided when the menu opens rather than when the list was read
+        var reveal = new MenuItem { Header = Loc.Get("ShowInExplorer") };
+        reveal.Click += (_, _) => RevealInExplorer(entry);
+        var menu = new ContextMenu { ItemsSource = new[] { reveal } };
+        menu.Opening += (_, _) =>
+        {
+            var exists = HasLocalFile(entry);
+            reveal.IsEnabled = exists;
+            ToolTip.SetTip(reveal, exists ? entry.LocalPath : Loc.Get("ArtifactsLocalMissing"));
+        };
+        row.ContextMenu = menu;
         row.PointerEntered += (_, _) => { if (_selected != entry) row.Background = new SolidColorBrush(ChatTheme.Hover(_isDark)); };
         row.PointerExited += (_, _) => { if (_selected != entry) row.Background = Brushes.Transparent; };
         return row;
@@ -288,6 +300,21 @@ public sealed class ArtifactsView : UserControl
         };
         b.Click += (_, _) => onClick();
         return b;
+    }
+
+    private static void RevealInExplorer(ArtifactEntry entry)
+    {
+        if (!HasLocalFile(entry)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{entry.LocalPath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch { }
     }
 
     private static void OpenExternally(string url)
