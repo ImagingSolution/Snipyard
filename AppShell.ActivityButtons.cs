@@ -60,15 +60,14 @@ internal partial class AppShell
     private ContextMenu? _activityAddMenu;
 
     /// <summary>
-    /// A left or right click anywhere on the bar that misses a button - the stretch between the
+    /// A right click anywhere on the bar that misses a button - the stretch between the
     /// two groups, which is only a few pixels on a short window, or the gaps around buttons -
     /// offers to add a button.
     /// </summary>
     private void OnActivityBarBlankPressed(object? sender, PointerPressedEventArgs e)
     {
         if ((e.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true) != null) return;
-        var props = e.GetCurrentPoint(ActivityBarPanel).Properties;
-        if (!props.IsLeftButtonPressed && !props.IsRightButtonPressed) return;
+        if (!e.GetCurrentPoint(ActivityBarPanel).Properties.IsRightButtonPressed) return;
         _activityAddMenu?.Open(ActivityBarPanel);
         e.Handled = true;
     }
