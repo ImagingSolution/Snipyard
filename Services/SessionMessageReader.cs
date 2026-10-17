@@ -727,6 +727,10 @@ public static class SessionMessageReader
         bool isToolUse = false;
         ConversationMessage? pendingAsk = null;
         string? planText = null;
+        // With thinkingDisplay "updates" the CLI stores the progress lines it prints between
+        // tool calls as thinking blocks with text; the terminal shows them as Claude's words
+        bool thinkingIsNarration = root.TryGetProperty("thinkingDisplay", out var tdProp)
+            && tdProp.ValueKind == JsonValueKind.String && tdProp.GetString() == "updates";
 
         foreach (var item in contentProp.EnumerateArray())
         {
@@ -756,7 +760,7 @@ public static class SessionMessageReader
                 {
                     var t = thinkEl.GetString();
                     if (!string.IsNullOrWhiteSpace(t))
-                        thinkingParts.Add(t);
+                        (thinkingIsNarration ? textParts : thinkingParts).Add(t);
                 }
             }
             else if (itemTypeStr == "tool_use")
