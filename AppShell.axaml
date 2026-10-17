@@ -931,6 +931,12 @@
                                 <PathIcon Data="M3 3H10V21H3ZM14 3H21V21H14Z"
                                           Width="14" Height="14" />
                             </Button>
+                            <Button x:Name="BtnLayoutCascade" Classes="icon-btn"
+                                    ToolTip.Tip="Cascade"
+                                    Click="OnLayoutCascade">
+                                <PathIcon Data="M2 2H14V4H4V12H2ZM6 6H18V8H8V16H6ZM10 10H22V22H10Z"
+                                          Width="14" Height="14" />
+                            </Button>
                             <Button x:Name="BtnLayoutMaximize" Classes="icon-btn"
                                     ToolTip.Tip="Full view"
                                     Click="OnLayoutMaximize">

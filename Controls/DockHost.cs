@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace Snipyard.Controls;
 
@@ -73,6 +76,15 @@ public class DockHost : UserControl
 
     /// <summary>Root of the tree being shown, or null when there are no windows.</summary>
     internal DockNode? Root { get; set; }
+
+    /// <summary>
+    /// A window was taken hold of in a way its own handlers never see - by the resize ring around
+    /// it in a cascade - and should be brought to the front.
+    /// </summary>
+    internal event Action<IMdiLayoutItem>? ActivateRequested;
+
+    /// <summary>A cascaded window's title bar was double-clicked: show that window in full view.</summary>
+    internal event Action<IMdiLayoutItem>? MaximizeRequested;
 
     public DockHost()
     {
@@ -151,8 +163,24 @@ public class DockHost : UserControl
             if (leaf.Active == null || !leaf.Tabs.Contains(leaf.Active))
                 leaf.Active = leaf.Tabs.Count > 0 ? leaf.Tabs[^1] : null;
 
-            foreach (var tab in leaf.Tabs)
-                tab.Container.IsVisible = ReferenceEquals(tab, leaf.Active);
+            for (int i = 0; i < leaf.Tabs.Count; i++)
+            {
+                var tab = leaf.Tabs[i];
+                bool active = ReferenceEquals(tab, leaf.Active);
+                tab.Container.IsVisible = leaf.Cascade || active;
+
+                // Cascaded, the active window rises above the rest without leaving its slot, so
+                // its stepped position still says which one it is. Odd numbers only: each
+                // window's resize ring takes the even one just under it.
+                int depth = active ? leaf.Tabs.Count : i;
+                tab.Container.ZIndex = leaf.Cascade ? depth * 2 + 1 : 0;
+
+                // A native child window (WebView2) is drawn by Windows above every Avalonia
+                // visual whatever its ZIndex, so one in a window further down the stack would
+                // punch through the window on top. Overlapped, only the front one keeps it.
+                foreach (var native in tab.Container.GetVisualDescendants().OfType<NativeControlHost>())
+                    native.IsVisible = !leaf.Cascade || active;
+            }
         }
     }
 
@@ -168,12 +196,15 @@ public class DockHost : UserControl
     {
         if (node is DockLeafNode leaf)
         {
-            var pane = new Panel();
+            var pane = leaf.Cascade
+                ? new CascadePanel(leaf, item => ActivateRequested?.Invoke(item), item => MaximizeRequested?.Invoke(item))
+                : new Panel();
             foreach (var tab in leaf.Tabs)
             {
                 pane.Children.Add(tab.Container);
                 _attached.Add(tab);
             }
+            if (pane is CascadePanel cascade) cascade.AddGrips();
             _panes.Add((leaf, pane));
             return pane;
         }
@@ -472,5 +503,273 @@ public class DockHost : UserControl
         leaf.Parent = null;
         if (before) { split.Add(arrival); split.Add(leaf); }
         else { split.Add(leaf); split.Add(arrival); }
+    }
+}
+
+/// <summary>
+/// Lays its visible children out overlapped, each one a step further down and to the right, all
+/// the same size - the classic MDI cascade. Stacking order is left to <c>ZIndex</c>.
+///
+/// A window dragged by its title bar leaves its step and stays where it was dropped, and one
+/// dragged by its edge keeps the size it was given.
+/// </summary>
+internal sealed class CascadePanel : Panel
+{
+    /// <summary>How far each window sits from the one before - enough to leave its title bar showing.</summary>
+    private const double Step = 28;
+
+    /// <summary>The smallest share of the pane a window may shrink to before the step gives way.</summary>
+    private const double MinShare = 0.5;
+
+    /// <summary>How much of a dragged window has to stay inside the pane, so it can always be grabbed again.</summary>
+    private const double KeepVisible = 80;
+
+    /// <summary>Width of the grab ring around each window that resizes it.</summary>
+    private const double Grip = 6;
+
+    /// <summary>How far along a side from a corner still counts as that corner.</summary>
+    private const double Corner = 16;
+
+    private static readonly Size MinWindow = new(240, 140);
+
+    /// <summary>
+    /// Where each moved or resized window was left, keyed by its container. Held outside the panel
+    /// because opening or closing any window rebuilds the tree, and a placement should outlive that.
+    /// </summary>
+    private static readonly ConditionalWeakTable<Control, StrongBox<Rect>> Placed = new();
+
+    [Flags]
+    private enum Edge { None = 0, Left = 1, Top = 2, Right = 4, Bottom = 8 }
+
+    private readonly DockLeafNode _leaf;
+    private readonly Action<IMdiLayoutItem> _activate;
+    private readonly Action<IMdiLayoutItem> _maximize;
+
+    /// <summary>
+    /// The resize ring behind each window. Separate controls rather than a band inside the window,
+    /// because a terminal sets its own cursor and captures the pointer on press.
+    /// </summary>
+    private readonly Dictionary<Control, Border> _grips = new();
+
+    private Control? _moving;
+    private Edge _edges;
+    private Point _start;
+    private Rect _startRect;
+
+    public CascadePanel(DockLeafNode leaf, Action<IMdiLayoutItem> activate, Action<IMdiLayoutItem> maximize)
+    {
+        _leaf = leaf;
+        _activate = activate;
+        _maximize = maximize;
+
+        // Tunnel, so the press is seen before the title bar's own handlers - those still run, and
+        // still bring the window to the front.
+        AddHandler(PointerPressedEvent, OnTitlePressed, RoutingStrategies.Tunnel);
+        PointerMoved += OnDragged;
+        PointerReleased += (_, _) => _moving = null;
+        PointerCaptureLost += (_, _) => _moving = null;
+    }
+
+    /// <summary>Forgets every dragged position and size, so the windows fall back into their steps.</summary>
+    internal static void ResetPositions() => Placed.Clear();
+
+    /// <summary>Whether <paramref name="item"/>'s title bar currently moves it rather than docking it.</summary>
+    internal static bool Moves(IMdiLayoutItem item) => item.Container.Parent is CascadePanel;
+
+    /// <summary>Gives every window in the pane its resize ring. Called once the windows are in.</summary>
+    internal void AddGrips()
+    {
+        foreach (var tab in _leaf.Tabs)
+        {
+            var container = tab.Container;
+            if (_grips.ContainsKey(container)) continue;
+
+            var grip = new Border { Background = Brushes.Transparent };
+            grip.PointerMoved += (_, e) =>
+            {
+                if (_moving == null) grip.Cursor = CursorFor(EdgesAt(e.GetPosition(grip), grip.Bounds.Size));
+            };
+            grip.PointerPressed += (_, e) =>
+            {
+                if (!e.GetCurrentPoint(grip).Properties.IsLeftButtonPressed) return;
+                var edges = EdgesAt(e.GetPosition(grip), grip.Bounds.Size);
+                if (edges == Edge.None) return;
+
+                // As on the desktop, taking hold of a window's edge brings it to the front.
+                _activate(tab);
+                Begin(container, edges, e.GetPosition(this));
+                e.Pointer.Capture(this);
+                e.Handled = true;
+            };
+
+            _grips[container] = grip;
+            Children.Add(grip);
+        }
+    }
+
+    private void OnTitlePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || e.Source is not Visual source) return;
+
+        // The close cross and any other button in the bar keep their click.
+        if (source.FindAncestorOfType<Button>(true) != null) return;
+
+        var item = _leaf.Tabs.FirstOrDefault(tab =>
+            ReferenceEquals(source, tab.TitleBar) || tab.TitleBar.IsVisualAncestorOf(source));
+        if (item == null) return;
+
+        // A double click on the title bar maximizes, as it does for a window on the desktop.
+        if (e.ClickCount == 2)
+        {
+            _moving = null;
+            _maximize(item);
+            e.Handled = true;
+            return;
+        }
+
+        Begin(item.Container, Edge.None, e.GetPosition(this));
+        e.Pointer.Capture(this);
+    }
+
+    private void Begin(Control container, Edge edges, Point at)
+    {
+        _moving = container;
+        _edges = edges;
+        _start = at;
+        _startRect = container.Bounds;
+    }
+
+    private void OnDragged(object? sender, PointerEventArgs e)
+    {
+        if (_moving == null) return;
+
+        var delta = e.GetPosition(this) - _start;
+        double left = _startRect.Left, top = _startRect.Top, right = _startRect.Right, bottom = _startRect.Bottom;
+
+        if (_edges == Edge.None)
+        {
+            left += delta.X; right += delta.X;
+            top += delta.Y; bottom += delta.Y;
+        }
+        else
+        {
+            // The opposite edge stays put; the dragged one stops where the window would get too small.
+            if (_edges.HasFlag(Edge.Left)) left = Math.Min(left + delta.X, right - MinWindow.Width);
+            if (_edges.HasFlag(Edge.Right)) right = Math.Max(right + delta.X, left + MinWindow.Width);
+            if (_edges.HasFlag(Edge.Top)) top = Math.Min(top + delta.Y, bottom - MinWindow.Height);
+            if (_edges.HasFlag(Edge.Bottom)) bottom = Math.Max(bottom + delta.Y, top + MinWindow.Height);
+        }
+
+        Placed.AddOrUpdate(_moving, new StrongBox<Rect>(new Rect(left, top, right - left, bottom - top)));
+        InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Which edges a point on the ring grabs. Only the ring itself is reachable - the window covers
+    /// the middle - so the side it is on is the edge, and near the end of a side it is the corner.
+    /// </summary>
+    private static Edge EdgesAt(Point p, Size ring)
+    {
+        bool left = p.X < Grip, right = p.X > ring.Width - Grip;
+        bool top = p.Y < Grip, bottom = p.Y > ring.Height - Grip;
+
+        if (left || right)
+        {
+            top |= p.Y < Grip + Corner;
+            bottom |= p.Y > ring.Height - Grip - Corner;
+        }
+        if (top || bottom)
+        {
+            left |= p.X < Grip + Corner;
+            right |= p.X > ring.Width - Grip - Corner;
+        }
+
+        var edges = Edge.None;
+        if (left) edges |= Edge.Left;
+        if (right) edges |= Edge.Right;
+        if (top) edges |= Edge.Top;
+        if (bottom) edges |= Edge.Bottom;
+        return edges;
+    }
+
+    private static Cursor? CursorFor(Edge edges) => edges switch
+    {
+        Edge.Left or Edge.Right => new Cursor(StandardCursorType.SizeWestEast),
+        Edge.Top or Edge.Bottom => new Cursor(StandardCursorType.SizeNorthSouth),
+        Edge.Left | Edge.Top => new Cursor(StandardCursorType.TopLeftCorner),
+        Edge.Right | Edge.Bottom => new Cursor(StandardCursorType.BottomRightCorner),
+        Edge.Right | Edge.Top => new Cursor(StandardCursorType.TopRightCorner),
+        Edge.Left | Edge.Bottom => new Cursor(StandardCursorType.BottomLeftCorner),
+        _ => null,
+    };
+
+    /// <summary>The windows on show, in the order they were added - which is their cascade step.</summary>
+    private List<Control> Windows() => Children.Where(c => c.IsVisible && _grips.ContainsKey(c)).ToList();
+
+    private (double Step, Size Window) Metrics(Size available, int count)
+    {
+        if (count <= 1 || double.IsInfinity(available.Width) || double.IsInfinity(available.Height))
+            return (0, available);
+
+        // Many windows would otherwise step their way off the pane; past that point the step
+        // shrinks instead, so every window keeps at least half the pane.
+        double room = Math.Min(available.Width, available.Height) * (1 - MinShare);
+        double step = Math.Min(Step, room / (count - 1));
+        double offset = step * (count - 1);
+        return (step, new Size(Math.Max(0, available.Width - offset), Math.Max(0, available.Height - offset)));
+    }
+
+    private List<Rect> Layout(List<Control> windows, Size pane)
+    {
+        var (step, size) = Metrics(pane, windows.Count);
+        var rects = new List<Rect>(windows.Count);
+        for (int i = 0; i < windows.Count; i++)
+            rects.Add(Placed.TryGetValue(windows[i], out var placed)
+                ? Clamp(placed.Value, pane)
+                : new Rect(new Point(i * step, i * step), size));
+        return rects;
+    }
+
+    /// <summary>
+    /// Fits a dragged window back into a pane that may have shrunk since: no bigger than the pane,
+    /// and with enough of its title bar inside to grab it again.
+    /// </summary>
+    private static Rect Clamp(Rect r, Size pane)
+    {
+        if (double.IsInfinity(pane.Width) || double.IsInfinity(pane.Height)) return r;
+
+        double w = Math.Min(r.Width, Math.Max(MinWindow.Width, pane.Width));
+        double h = Math.Min(r.Height, Math.Max(MinWindow.Height, pane.Height));
+        double x = Math.Clamp(r.X, KeepVisible - w, Math.Max(0, pane.Width - KeepVisible));
+        double y = Math.Clamp(r.Y, 0, Math.Max(0, pane.Height - KeepVisible / 2));
+        return new Rect(x, y, w, h);
+    }
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        var windows = Windows();
+        var rects = Layout(windows, availableSize);
+        for (int i = 0; i < windows.Count; i++) windows[i].Measure(rects[i].Size);
+        foreach (var grip in _grips.Values) grip.Measure(Size.Infinity);
+        return new Size(
+            double.IsInfinity(availableSize.Width) ? 0 : availableSize.Width,
+            double.IsInfinity(availableSize.Height) ? 0 : availableSize.Height);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var windows = Windows();
+        var rects = Layout(windows, finalSize);
+        for (int i = 0; i < windows.Count; i++)
+        {
+            windows[i].Arrange(rects[i]);
+
+            // The ring sits just under its own window, so the window covers the middle of it and
+            // any window stacked above covers whatever of it falls behind that one.
+            var grip = _grips[windows[i]];
+            grip.ZIndex = windows[i].ZIndex - 1;
+            grip.Arrange(rects[i].Inflate(Grip));
+        }
+        return finalSize;
     }
 }

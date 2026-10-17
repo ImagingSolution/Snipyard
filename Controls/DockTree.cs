@@ -74,6 +74,12 @@ internal sealed class DockLeafNode : DockNode
     /// <summary>The tab this pane is showing, or null while the pane is empty.</summary>
     public IMdiLayoutItem? Active { get; set; }
 
+    /// <summary>
+    /// Shows every tab at once, overlapped and stepped down-right, with <see cref="Active"/> on
+    /// top - the cascade preset. A plain pane shows only its active tab.
+    /// </summary>
+    public bool Cascade { get; set; }
+
     public static DockLeafNode Of(IMdiLayoutItem item)
     {
         var leaf = new DockLeafNode { Active = item };

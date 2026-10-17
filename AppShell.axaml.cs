@@ -37,7 +37,7 @@ internal partial class AppShell : UserControl, IDockOwner
     /// A whole-tree arrangement of the open windows. Presets, not positions: the dock tree is
     /// what actually places the windows, and pressing one of these rebuilds it.
     /// </summary>
-    private enum MdiLayout { Maximize, Tile, TileHorizontal, TileVertical }
+    private enum MdiLayout { Maximize, Tile, TileHorizontal, TileVertical, Cascade }
     private enum SidebarPanel { None, Explorer, Snippets, Settings, Windows, SourceControl, Slash, Extensions, Memory }
 
     /// <summary>
@@ -402,6 +402,14 @@ internal partial class AppShell : UserControl, IDockOwner
         _primary = primary;
         InitializeComponent();
         Shells.Add(this);
+        MdiHost.ActivateRequested += ActivateLayoutItem;
+        // Posted: switching preset rebuilds the dock tree, which would pull the window out of the
+        // visual tree while its own pointer event is still being routed.
+        MdiHost.MaximizeRequested += item => Dispatcher.UIThread.Post(() =>
+        {
+            ActivateLayoutItem(item);
+            OnLayoutMaximize(null, null!);
+        });
         // The chat view's background list names sessions the way the windows panel does
         Controls.DocumentViewPanel.BackgroundAgentName ??= AgentDisplayName;
 
@@ -616,6 +624,7 @@ internal partial class AppShell : UserControl, IDockOwner
         ToolTip.SetTip(BtnLayoutTile, Loc.Get("TileWindows"));
         ToolTip.SetTip(BtnLayoutTileH, Loc.Get("TileHorizontally"));
         ToolTip.SetTip(BtnLayoutTileV, Loc.Get("TileVertically"));
+        ToolTip.SetTip(BtnLayoutCascade, Loc.Get("CascadeWindows"));
         ToolTip.SetTip(BtnLayoutMaximize, Loc.Get("FullView"));
 
         // Slash command panel
@@ -6877,6 +6886,7 @@ internal partial class AppShell : UserControl, IDockOwner
             ("TileWindows", "Tile Windows", "", () => { _layout = MdiLayout.Tile; ArrangeChildren(); }),
             ("TileHorizontally", "Tile Horizontally", "", () => { _layout = MdiLayout.TileHorizontal; ArrangeChildren(); }),
             ("TileVertically", "Tile Vertically", "", () => { _layout = MdiLayout.TileVertical; ArrangeChildren(); }),
+            ("CascadeWindows", "Cascade", "", () => OnLayoutCascade(null, null!)),
             ("FullView", "Full View", "", () => { _layout = MdiLayout.Maximize; ArrangeChildren(); }),
             ("RunCompact", "Compact (/compact)", "", () => OnActivityCompact(null, null!)),
             ("PaletteSwitchMode", "Switch Mode (Shift+Tab)", "", SendModeSwitch),
@@ -8790,6 +8800,15 @@ internal partial class AppShell : UserControl, IDockOwner
         ArrangeChildren();
     }
 
+    private void OnLayoutCascade(object? sender, RoutedEventArgs e)
+    {
+        // Choosing cascade again is how dragged windows get put back into their steps.
+        CascadePanel.ResetPositions();
+        _customLayout = false;
+        _layout = MdiLayout.Cascade;
+        ArrangeChildren();
+    }
+
     private void OnOpenHelp(object? sender, RoutedEventArgs e)
     {
         var fileName = Loc.Language == "日本語" ? "help_ja.html" : "help_en.html";
@@ -9033,6 +9052,15 @@ internal partial class AppShell : UserControl, IDockOwner
                 var split = new DockSplitNode { Orientation = Orientation.Horizontal };
                 foreach (var item in TerminalsLast(items)) split.Add(DockLeafNode.Of(item));
                 return Simplify(split);
+            }
+
+            case MdiLayout.Cascade:
+            {
+                // One pane holding every window, like full view, but showing them all overlapped.
+                var leaf = new DockLeafNode { Cascade = true };
+                leaf.Tabs.AddRange(items);
+                leaf.Active = _activeLayoutItem ?? items[^1];
+                return leaf;
             }
 
             default:

@@ -72,7 +72,7 @@ PseudoConsole (ConPTY P/Invoke)
 
 ### MDI Window Management
 
-`AppShell` (hosted by `MainWindow`) manages children via `List<MdiChildInfo>`. Each `MdiChildInfo` record holds the visual container (Border), title bar, TerminalControl, strip button (tab), and project folder context. Layout modes: Maximize, Tile, TileHorizontal, TileVertical.
+`AppShell` (hosted by `MainWindow`) manages children via `List<MdiChildInfo>`. Each `MdiChildInfo` record holds the visual container (Border), title bar, TerminalControl, strip button (tab), and project folder context. Layout modes: Maximize, Tile, TileHorizontal, TileVertical, Cascade.
 
 Switching active child triggers project context switching — the toolbar, explorer, session list, and git status all update to reflect that child's project folder.
 

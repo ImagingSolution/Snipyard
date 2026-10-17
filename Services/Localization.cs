@@ -172,6 +172,7 @@ public static class Loc
         ["TileWindows"] = new() { ["English"] = "Tile windows", ["日本語"] = "タイル配置" },
         ["TileHorizontally"] = new() { ["English"] = "Tile horizontally", ["日本語"] = "横に並べる" },
         ["TileVertically"] = new() { ["English"] = "Tile vertically", ["日本語"] = "縦に並べる" },
+        ["CascadeWindows"] = new() { ["English"] = "Cascade", ["日本語"] = "重ねて表示" },
         ["FullView"] = new() { ["English"] = "Full view", ["日本語"] = "最大表示" },
         ["HelpTooltip"] = new() { ["English"] = "Help", ["日本語"] = "ヘルプ" },
 

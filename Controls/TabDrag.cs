@@ -60,6 +60,10 @@ internal static class TabDrag
             if (!e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed) return;
             if (entry.Owner == null) return;
 
+            // Cascaded, the header moves the window around the pane instead; the strip tab
+            // still docks it.
+            if (ReferenceEquals(handle, entry.TitleBar) && CascadePanel.Moves(entry)) return;
+
             // The close cross is a button inside the handle; a press that starts there is aimed
             // at it. On a strip tab the handle is itself the button, and that one is the drag.
             if (e.Source is Visual source && source.FindAncestorOfType<Button>(true) is { } inner
