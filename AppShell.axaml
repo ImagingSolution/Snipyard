@@ -420,6 +420,12 @@
                                 <PathIcon Data="M15 9H9V15H15V9M13 11V13H11V11H13M21 11V9H19V7A2 2 0 0 0 17 5H15V3H13V5H11V3H9V5H7A2 2 0 0 0 5 7V9H3V11H5V13H3V15H5V17A2 2 0 0 0 7 19H9V21H11V19H13V21H15V19H17A2 2 0 0 0 19 17V15H21V13H19V11H21M17 17H7V7H17V17Z"
                                           Width="20" Height="20" />
                             </Button>
+                            <Button x:Name="BtnActivityArtifacts" Classes="activity-btn"
+                                    ToolTip.Tip="Artifacts"
+                                    Click="OnActivityArtifacts">
+                                <PathIcon Data="M11 3A4.5 4.5 0 1 1 11 12A4.5 4.5 0 1 1 11 3ZM11 5A2.5 2.5 0 1 0 11 10A2.5 2.5 0 1 0 11 5ZM6 14A3.5 3.5 0 1 1 6 21A3.5 3.5 0 1 1 6 14ZM6 16A1.5 1.5 0 1 0 6 19A1.5 1.5 0 1 0 6 16ZM14.5 13H19.5A1.5 1.5 0 0 1 21 14.5V19.5A1.5 1.5 0 0 1 19.5 21H14.5A1.5 1.5 0 0 1 13 19.5V14.5A1.5 1.5 0 0 1 14.5 13ZM15 15V19H19V15Z"
+                                          Width="20" Height="20" />
+                            </Button>
                             <Button x:Name="BtnActivityDiagram" Classes="activity-btn"
                                     ToolTip.Tip="Diagram Viewer"
                                     IsVisible="False"

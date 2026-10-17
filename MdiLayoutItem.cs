@@ -6,7 +6,7 @@ using Snipyard.Controls;
 namespace Snipyard;
 
 /// <summary>What an MDI window holds, for the places that have to tell the kinds apart.</summary>
-internal enum MdiItemKind { Terminal, Editor, Graph, Memory }
+internal enum MdiItemKind { Terminal, Editor, Graph, Memory, Artifacts }
 
 /// <summary>
 /// The part of an MDI window the layout cares about. Terminals, editors and commit graphs each

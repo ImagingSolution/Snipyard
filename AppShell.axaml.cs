@@ -1385,6 +1385,10 @@ internal partial class AppShell : UserControl, IDockOwner
                 case MemoryChildInfo memory:
                     WindowsList.Children.Add(BuildMemoryWindowRow(memory));
                     break;
+
+                case ArtifactsChildInfo artifacts:
+                    WindowsList.Children.Add(BuildArtifactsWindowRow(artifacts));
+                    break;
             }
         }
     }
@@ -2296,6 +2300,11 @@ internal partial class AppShell : UserControl, IDockOwner
                 SetActiveLayoutItem(memory);
                 memory.View.Focus();
                 break;
+
+            case ArtifactsChildInfo artifacts:
+                SetActiveLayoutItem(artifacts);
+                artifacts.View.Focus();
+                break;
         }
     }
 
@@ -2305,6 +2314,7 @@ internal partial class AppShell : UserControl, IDockOwner
         else if (item is EditorChildInfo editor) _ = CloseEditorWindowAsync(editor);
         else if (item is GraphChildInfo graph) CloseGraphWindow(graph);
         else if (item is MemoryChildInfo memory) CloseMemoryNoteWindow(memory);
+        else if (item is ArtifactsChildInfo artifacts) CloseArtifactsWindow(artifacts);
     }
 
     /// <summary>
@@ -2317,6 +2327,7 @@ internal partial class AppShell : UserControl, IDockOwner
         if (item is EditorChildInfo editor) return CloseEditorWindowAsync(editor);
         if (item is GraphChildInfo graph) CloseGraphWindow(graph);
         if (item is MemoryChildInfo memory) CloseMemoryNoteWindow(memory);
+        if (item is ArtifactsChildInfo artifacts) CloseArtifactsWindow(artifacts);
         return Task.CompletedTask;
     }
 
@@ -3622,6 +3633,14 @@ internal partial class AppShell : UserControl, IDockOwner
             memory.Container.Background = containerBg;
             ApplyThemeToTitleBar(memory.TitleBar, _isDark);
             memory.TitleText.Foreground = new SolidColorBrush(MdiTitleFg(_isDark));
+        }
+
+        foreach (var artifacts in _artifactsChildren)
+        {
+            artifacts.Container.Background = containerBg;
+            ApplyThemeToTitleBar(artifacts.TitleBar, _isDark);
+            artifacts.TitleText.Foreground = new SolidColorBrush(MdiTitleFg(_isDark));
+            artifacts.View.ApplyTheme(_isDark);
         }
 
         // The frames themselves are painted by the selection, off a brush shared with the
@@ -8813,11 +8832,12 @@ internal partial class AppShell : UserControl, IDockOwner
     private List<IMdiLayoutItem> AllLayoutItems()
     {
         var list = new List<IMdiLayoutItem>(
-            _children.Count + _editorChildren.Count + _graphChildren.Count + _memoryChildren.Count);
+            _children.Count + _editorChildren.Count + _graphChildren.Count + _memoryChildren.Count + _artifactsChildren.Count);
         list.AddRange(_children);
         list.AddRange(_editorChildren);
         list.AddRange(_graphChildren);
         list.AddRange(_memoryChildren);
+        list.AddRange(_artifactsChildren);
         return list;
     }
 
@@ -8852,6 +8872,9 @@ internal partial class AppShell : UserControl, IDockOwner
             case MemoryChildInfo memory when !_memoryChildren.Contains(memory):
                 _memoryChildren.Add(memory);
                 break;
+            case ArtifactsChildInfo artifacts when !_artifactsChildren.Contains(artifacts):
+                _artifactsChildren.Add(artifacts);
+                break;
         }
     }
 
@@ -8864,6 +8887,7 @@ internal partial class AppShell : UserControl, IDockOwner
             case EditorChildInfo editor: _editorChildren.Remove(editor); break;
             case GraphChildInfo graph: _graphChildren.Remove(graph); break;
             case MemoryChildInfo memory: _memoryChildren.Remove(memory); break;
+            case ArtifactsChildInfo artifacts: _artifactsChildren.Remove(artifacts); break;
         }
 
         if (ReferenceEquals(_activeChild, item)) _activeChild = _children.LastOrDefault();
