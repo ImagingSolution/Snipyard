@@ -830,7 +830,8 @@ public static class MarkdownParser
         {
             var cells = row.Trim().Trim('|').Split('|');
             for (int j = 0; j < cells.Length; j++)
-                cells[j] = cells[j].Trim();
+                // A table row is one source line, so a line break inside a cell can only be written as <br>.
+                cells[j] = Regex.Replace(cells[j].Trim(), @"\s*<br\s*/?>\s*", "\n", RegexOptions.IgnoreCase);
             // Skip separator rows (--- | --- | ---)
             if (cells.Length > 0 && Regex.IsMatch(cells[0], @"^[-:]+$"))
                 continue;
