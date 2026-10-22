@@ -4944,6 +4944,10 @@ public partial class TerminalControl : Control, IDisposable
             HorizontalAlignment = HorizontalAlignment.Left,
             Margin = new Thickness(0, 0, 0, 8),
         });
+        // The CLI can keep the plan out of the transcript until it is answered; the card then
+        // carries it, so it is not approved unseen
+        if (prompt.Kind == ChoiceKind.Plan && _docViewPanel?.UnwrittenPlanView() is { } planView)
+            content.Children.Insert(0, planView);
 
         // Say in plain words what the CLI is asking permission for, and how risky it is.
         var explanation = promptText != null ? Services.CommandExplainer.Explain(promptText) : null;

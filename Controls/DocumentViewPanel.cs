@@ -493,6 +493,14 @@ public class DocumentViewPanel : Panel
     /// </summary>
     public bool HasOpenAskCard => _shownMessages.Any(m => m.PendingAskId != null);
 
+    /// <summary>The plan up for approval, for its card, when the transcript has not shown it yet.</summary>
+    public Control? UnwrittenPlanView()
+    {
+        var plan = _currentSessionPath != null ? SessionMessageReader.ReadUnwrittenPlan(_currentSessionPath) : null;
+        return plan == null ? null
+            : CreateAssistantView(new ConversationMessage(MessageRole.Assistant, plan, DateTime.Now, null, false, false));
+    }
+
     /// <summary>Shows the prompts waiting for the turn to end, as chips under the transcript.</summary>
     public void SetQueue(IReadOnlyList<string> items)
     {

@@ -713,6 +713,52 @@ public static class SessionMessageReader
         return new SessionMeta(customTitle ?? aiTitle ?? summary, cwd);
     }
 
+    private static readonly Regex SlugRegex = new("\"slug\":\"([^\"\\\\/]+)\"", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The plan up for approval, read from the session's plan file, while the transcript does not
+    /// have it yet: Claude Code can hold the ExitPlanMode call back until it is answered, which
+    /// leaves the chat with the approval card but no plan. Null once the transcript carries an
+    /// unanswered ExitPlanMode, whose plan the chat already shows.
+    /// </summary>
+    public static string? ReadUnwrittenPlan(string jsonlPath)
+    {
+        string? slug = null, openPlanId = null;
+        try
+        {
+            using var stream = new FileStream(jsonlPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (SlugRegex.Match(line) is { Success: true } m) slug = m.Groups[1].Value;
+                if (openPlanId != null && line.Contains("\"tool_result\"") && line.Contains(openPlanId))
+                    openPlanId = null;
+                // api-request-blob rows repeat old calls, so only the assistant's own rows count
+                if (!line.Contains("\"name\":\"ExitPlanMode\"")) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    var root = doc.RootElement;
+                    if (!root.TryGetProperty("type", out var t) || t.GetString() != "assistant") continue;
+                    foreach (var item in root.GetProperty("message").GetProperty("content").EnumerateArray())
+                        if (item.TryGetProperty("name", out var n) && n.GetString() == "ExitPlanMode"
+                            && item.TryGetProperty("id", out var id))
+                            openPlanId = id.GetString();
+                }
+                catch { }
+            }
+        }
+        catch { return null; }
+        if (openPlanId != null || slug == null) return null;
+
+        // shortcut: assumes the default plans folder, ignoring a custom plansDirectory setting
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".claude", "plans", slug + ".md");
+        try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+        catch { return null; }
+    }
+
     private static ConversationMessage? ParseAssistantMessage(JsonElement root, DateTime? timestamp,
         Dictionary<string, string> toolUseIdToName, Dictionary<string, ToolCall>? calls)
     {
