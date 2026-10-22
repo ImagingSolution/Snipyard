@@ -113,9 +113,10 @@ public static class TerminalInsight
     /// whenever the session talks about them, and a line of prose is not a running spinner.
     /// The token count is not required: it only turns up once output streams, and a turn that
     /// streams late (a /compact, a long think) reads "(16s)" or "(16s · thinking)" until then.
+    /// Some verbs are hyphenated ("Sock-hopping…"), so the word allows - and '.
     /// </summary>
     private static readonly Regex WorkingSpinnerRegex = new(
-        @"^\s{0,6}[^\s\p{L}\p{N}]\s*\p{L}[\p{L} ]*(?:…|\.\.\.)\s*\(\s*(?:\d+m\s*)?\d+s\s*(?:\)|[·.])",
+        @"^\s{0,6}[^\s\p{L}\p{N}]\s*\p{L}[\p{L} '\-]*(?:…|\.\.\.)\s*\(\s*(?:\d+m\s*)?\d+s\s*(?:\)|[·.])",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>Matches the elapsed-time part of a working line: "(12s" or "(1m 5s".</summary>
