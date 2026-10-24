@@ -15,6 +15,10 @@ public static class DiagramCache
 {
     private static string GetDiagramDir(string projectFolder)
     {
+        // A parent folder can collapse to the same key as its subfolder; the literal name decides.
+        var literal = ClaudeProjectPaths.ProjectDir(projectFolder);
+        if (Directory.Exists(literal)) return Path.Combine(literal, "diagrams");
+
         var normalized = NormalizeFolderName(projectFolder);
         var baseDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

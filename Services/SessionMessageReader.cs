@@ -367,35 +367,23 @@ public static class SessionMessageReader
 
         try
         {
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".claude", "projects");
+            // The literal name first: a parent like "Interface連載" collapses to the same key as its subfolder.
+            var dir = ClaudeProjectPaths.ProjectDir(projectFolder);
+            if (!Directory.Exists(dir)) return null;
 
-            if (!Directory.Exists(baseDir)) return null;
+            string? mostRecent = null;
+            DateTime mostRecentTime = DateTime.MinValue;
 
-            var normalized = NormalizeFolderName(projectFolder);
-
-            foreach (var dir in Directory.GetDirectories(baseDir))
+            foreach (var file in Directory.GetFiles(dir, "*.jsonl"))
             {
-                var dirName = Path.GetFileName(dir);
-                var normalizedDir = NormalizeFolderName(dirName);
-                if (normalizedDir.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                var lastWrite = File.GetLastWriteTime(file);
+                if (lastWrite > mostRecentTime)
                 {
-                    string? mostRecent = null;
-                    DateTime mostRecentTime = DateTime.MinValue;
-
-                    foreach (var file in Directory.GetFiles(dir, "*.jsonl"))
-                    {
-                        var lastWrite = File.GetLastWriteTime(file);
-                        if (lastWrite > mostRecentTime)
-                        {
-                            mostRecentTime = lastWrite;
-                            mostRecent = file;
-                        }
-                    }
-                    return mostRecent;
+                    mostRecentTime = lastWrite;
+                    mostRecent = file;
                 }
             }
+            return mostRecent;
         }
         catch { }
 
@@ -425,8 +413,9 @@ public static class SessionMessageReader
                 var normalizedDir = NormalizeFolderName(dirName);
                 if (normalizedDir.Equals(normalized, StringComparison.OrdinalIgnoreCase))
                 {
+                    // Several folders can share a key (a parent and its subfolder), so keep looking.
                     var filePath = Path.Combine(dir, $"{sessionId}.jsonl");
-                    return File.Exists(filePath) ? filePath : null;
+                    if (File.Exists(filePath)) return filePath;
                 }
             }
         }
