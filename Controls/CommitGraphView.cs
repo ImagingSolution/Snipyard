@@ -123,7 +123,7 @@ public sealed partial class CommitGraphView : Control
         _isDark = isDark;
 
         // Commit messages are often Japanese here, so the UI face needs a CJK fallback behind it.
-        var uiFamily = new FontFamily("Segoe UI, Yu Gothic UI, Meiryo, sans-serif");
+        var uiFamily = new FontFamily("Segoe UI, Yu Gothic UI, Meiryo, Hiragino Sans, sans-serif");
         _ui = new Typeface(uiFamily);
         _uiBold = new Typeface(uiFamily, FontStyle.Normal, FontWeight.SemiBold);
 

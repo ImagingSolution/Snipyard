@@ -67,12 +67,13 @@ public sealed record ExecutionTarget(ExecutionKind Kind, string Name, string Rem
             inner.Append("exec ").Append(BashQuote(exe));
             foreach (var a in args) inner.Append(' ').Append(BashQuote(a));
 
-            argv.Add("ssh.exe");
+            argv.Add(OperatingSystem.IsWindows() ? "ssh.exe" : "ssh");
             argv.Add("-t");
             argv.Add(Name);
             argv.Add("exec bash -lc " + BashQuote(inner.ToString()));
         }
-        return string.Join(" ", argv.Select(CrtQuote));
+        // Off Windows the line is read by the local login shell (UnixPseudoConsole), not CreateProcess.
+        return string.Join(" ", argv.Select(OperatingSystem.IsWindows() ? (Func<string, string>)CrtQuote : BashQuote));
     }
 
     /// <summary>

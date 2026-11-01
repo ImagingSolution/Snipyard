@@ -38,6 +38,12 @@ public class NotificationService : IDisposable
     {
         try
         {
+            if (!OperatingSystem.IsWindows())
+            {
+                MacNotify(kind, title, message);
+                return;
+            }
+
             if (EnableToast)
             {
                 ShowToast(kind, title, message);
@@ -54,8 +60,43 @@ public class NotificationService : IDisposable
         }
     }
 
+    /// <summary>
+    /// macOS: Notification Center through osascript, and the system sounds through afplay.
+    /// Both are on every Mac, so this needs no entitlement or extra package either.
+    /// </summary>
+    private void MacNotify(NotifyKind kind, string title, string message)
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        if (EnableToast)
+        {
+            var script = $"display notification {AppleString(message)} with title {AppleString(title)}";
+            Run("osascript", "-e", script);
+        }
+        if (EnableSound)
+        {
+            var sound = kind switch
+            {
+                NotifyKind.PermissionWaiting => "Funk",
+                NotifyKind.Error => "Basso",
+                _ => "Glass",
+            };
+            Run("afplay", $"/System/Library/Sounds/{sound}.aiff");
+        }
+    }
+
+    private static string AppleString(string s)
+        => "\"" + (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+    private static void Run(string exe, params string[] args)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        System.Diagnostics.Process.Start(psi)?.Dispose();
+    }
+
     public void Dispose()
     {
+        if (!OperatingSystem.IsWindows()) return;
         lock (_lock)
         {
             try

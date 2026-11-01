@@ -233,6 +233,7 @@ internal partial class AppShell : UserControl, IDockOwner
         "Segoe UI", "Arial", "Verdana", "Tahoma", "Calibri",
         "MS Gothic", "BIZ UDGothic", "Yu Gothic", "Yu Gothic UI",
         "Meiryo", "Meiryo UI", "BIZ UDMincho", "MS Mincho",
+        "Menlo", "SF Mono", "Monaco", "Hiragino Sans",
     };
 
     private static readonly List<string> LanguageList = new() { "English", "日本語" };
@@ -1185,7 +1186,7 @@ internal partial class AppShell : UserControl, IDockOwner
 
     private async void OnActivityDiagram(object? sender, RoutedEventArgs e)
     {
-        var typeface = new Avalonia.Media.Typeface(_settings.FontFamily + ", Consolas, Courier New");
+        var typeface = new Avalonia.Media.Typeface(_settings.FontFamily + ", Consolas, Menlo, Courier New");
 
         // Check if current terminal has any diagrams (detected or cached)
         var diagrams = new List<Terminal.CodeBlockInfo>();
@@ -1487,7 +1488,7 @@ internal partial class AppShell : UserControl, IDockOwner
             {
                 Text = preview,
                 FontSize = 11,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Courier New"),
                 MaxWidth = 500,
                 TextWrapping = TextWrapping.NoWrap,
             };
@@ -2134,7 +2135,7 @@ internal partial class AppShell : UserControl, IDockOwner
         {
             Text = doc.Text,
             FontSize = ClampEditorFontSize(_settings.EditorFontSize),
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Courier New"),
             AcceptsReturn = true,
             AcceptsTab = true,
             TextWrapping = TextWrapping.NoWrap,
@@ -2466,7 +2467,7 @@ internal partial class AppShell : UserControl, IDockOwner
     // Code"). Naming an emoji-capable family explicitly avoids relying on Skia's automatic
     // system-font glyph fallback, which drops that glyph under the self-contained single-file
     // publish (PublishSingleFile) even though the same title renders fine under `dotnet run`.
-    private static readonly FontFamily TitleFontFamily = new("Segoe UI Emoji,Segoe UI,Inter");
+    private static readonly FontFamily TitleFontFamily = new("Segoe UI Emoji,Segoe UI,Apple Color Emoji,Inter");
 
     private readonly record struct StripTab(Button Button, StackPanel Content, TextBlock Text, Ellipse? Dot, Button CloseButton);
 
@@ -2785,7 +2786,7 @@ internal partial class AppShell : UserControl, IDockOwner
         // the panel behind it are not left showing the branch as it was.
         var panel = new Controls.CommitGraphPanel(
             repoRoot, repoLabel, _isDark,
-            new Typeface(_settings.FontFamily + ", Consolas, Courier New"),
+            new Typeface(_settings.FontFamily + ", Consolas, Menlo, Courier New"),
             SendToActiveTerminal, ShowMessageDialog, ShowConfirmDialog,
             (title, watermark, initial) => ShowTextInputDialog(title, watermark, initial));
         panel.GitChanged += (_, _) => RefreshGitInfo();
@@ -3294,16 +3295,7 @@ internal partial class AppShell : UserControl, IDockOwner
         if (node == null) return;
 
         // Open parent folder with the item selected
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{node.FullPath}\"",
-                UseShellExecute = true
-            });
-        }
-        catch { }
+        PlatformShell.Reveal(node.FullPath);
     }
 
     private async void OnTreeCopyPath(object? sender, RoutedEventArgs e)
@@ -3373,6 +3365,11 @@ internal partial class AppShell : UserControl, IDockOwner
     /// </summary>
     private static void OpenFileWith(string filePath)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            PlatformShell.OpenWithMac(filePath);
+            return;
+        }
         var thread = new System.Threading.Thread(() =>
         {
             try
@@ -3399,16 +3396,7 @@ internal partial class AppShell : UserControl, IDockOwner
 
     private static void OpenFolderInExplorer(string folderPath)
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{folderPath}\"",
-                UseShellExecute = true
-            });
-        }
-        catch { }
+        PlatformShell.OpenFolder(folderPath);
     }
 
     // ── Settings Panel (inline) ──
@@ -4254,7 +4242,7 @@ internal partial class AppShell : UserControl, IDockOwner
         // that the user typed themselves, so it comes across to the new one.
         var draft = _sourceControl?.DraftMessage ?? "";
 
-        var typeface = new Typeface(_settings.FontFamily + ", Consolas, Courier New");
+        var typeface = new Typeface(_settings.FontFamily + ", Consolas, Menlo, Courier New");
         var host = new Controls.SourceControlHost(
             SendToActiveTerminal,
             ShowMessageDialog,
@@ -4284,7 +4272,7 @@ internal partial class AppShell : UserControl, IDockOwner
     /// </summary>
     private void CreateMemoryPanel()
     {
-        var typeface = new Typeface(_settings.FontFamily + ", Consolas, Courier New");
+        var typeface = new Typeface(_settings.FontFamily + ", Consolas, Menlo, Courier New");
         var host = new Controls.MemoryHost(
             OpenFileEditorWindow,
             RevealInExplorer,
@@ -4300,16 +4288,7 @@ internal partial class AppShell : UserControl, IDockOwner
     /// <summary>Opens the containing folder with the file selected.</summary>
     private static void RevealInExplorer(string path)
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{path}\"",
-                UseShellExecute = true
-            });
-        }
-        catch { }
+        PlatformShell.Reveal(path);
     }
 
     /// <summary>Opens the source-control panel, where the commit graph now lives.</summary>
@@ -5130,7 +5109,7 @@ internal partial class AppShell : UserControl, IDockOwner
     {
         try
         {
-            if (HostWindow.TryGetPlatformHandle() is { } handle)
+            if (OperatingSystem.IsWindows() && HostWindow.TryGetPlatformHandle() is { } handle)
                 FlashWindow(handle.Handle, true);
         }
         catch { }
@@ -6760,6 +6739,16 @@ internal partial class AppShell : UserControl, IDockOwner
         // at startup would go stale.
         ShellHost.InvalidateResolution();
 
+        if (!OperatingSystem.IsWindows())
+        {
+            // macOS/Linux sessions always run in the login shell; there is nothing to choose.
+            CmbTerminalShell.ItemsSource = new List<string> { System.IO.Path.GetFileName(UnixPseudoConsole.UserShell) };
+            CmbTerminalShell.SelectedIndex = 0;
+            CmbTerminalShell.IsEnabled = false;
+            LblTerminalShellHint.Text = UnixPseudoConsole.UserShell;
+            return;
+        }
+
         CmbTerminalShell.ItemsSource = new List<string>
         {
             Loc.Get("TerminalShellCmd"),
@@ -6784,6 +6773,7 @@ internal partial class AppShell : UserControl, IDockOwner
     /// </summary>
     private void UpdateTerminalShellHint()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var pinned = ShellHost.Pinned(_cli.Active);
         var hint = pinned == null
             ? Loc.Get("TerminalShellHint")
@@ -7516,7 +7506,7 @@ internal partial class AppShell : UserControl, IDockOwner
                 {
                     Text = keys,
                     FontSize = 12,
-                    FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                    FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, monospace"),
                     Foreground = new SolidColorBrush(DialogForeground()),
                 };
                 var whatText = new TextBlock

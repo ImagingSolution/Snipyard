@@ -22,7 +22,7 @@ public partial class TerminalControl : Control, IDisposable
 {
     private TerminalBuffer _buffer;
     private VtParser _parser;
-    private PseudoConsole? _pty;
+    private IPseudoConsole? _pty;
     private double _cellWidth;
     private double _cellHeight;
     private Typeface _typeface;
@@ -517,7 +517,7 @@ public partial class TerminalControl : Control, IDisposable
 
     public void SetFont(string fontFamily, double fontSize)
     {
-        _typeface = new Typeface(fontFamily + ", Consolas, Courier New");
+        _typeface = new Typeface(fontFamily + ", Consolas, Menlo, Courier New");
         _fontSize = fontSize;
         ApplyInputChrome();
         _docViewPanel?.SetFont(fontFamily, fontSize);
@@ -528,7 +528,7 @@ public partial class TerminalControl : Control, IDisposable
 
     public TerminalControl()
     {
-        _typeface = new Typeface("Cascadia Mono, Consolas, Courier New, monospace");
+        _typeface = new Typeface("Cascadia Mono, Consolas, Menlo, Courier New, monospace");
         _buffer = new TerminalBuffer(24, 80);
         _parser = new VtParser(_buffer);
         _parser.TitleChanged += title =>
@@ -554,7 +554,7 @@ public partial class TerminalControl : Control, IDisposable
             BorderThickness = new Thickness(0, 1, 0, 0),
             Padding = new Thickness(6, 4),
             FontSize = _fontSize,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New, monospace"),
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Courier New, monospace"),
             PlaceholderText = "IME input here — auto-sent on commit",
             Focusable = true,
             AcceptsReturn = false,
@@ -847,8 +847,9 @@ public partial class TerminalControl : Control, IDisposable
                 e.Handled = true;
                 return;
             }
-            bool isCtrlShortcut = e.KeyModifiers.HasFlag(KeyModifiers.Control)
-                && e.Key is Key.C or Key.V or Key.F or Key.Up or Key.Down;
+            bool isCtrlShortcut = (e.KeyModifiers.HasFlag(KeyModifiers.Control)
+                && e.Key is Key.C or Key.V or Key.F or Key.Up or Key.Down)
+                || (IsMacCmd(e) && e.Key is Key.C or Key.V);
             if (!isCtrlShortcut && !IsAltV(e))
                 return;
         }
@@ -861,6 +862,21 @@ public partial class TerminalControl : Control, IDisposable
             _inputStartCol = _buffer.CursorCol;
             _inputStartPending = false;
             System.Diagnostics.Debug.WriteLine($"[InputStart] recorded at ({_inputStartAbsRow},{_inputStartCol})");
+        }
+
+        // Cmd+C on macOS only ever copies; Ctrl+C stays the terminal's interrupt.
+        if (e.Key == Key.C && IsMacCmd(e))
+        {
+            if (_hasSelection)
+            {
+                var text = GetSelectedText();
+                var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+                if (clipboard != null && !string.IsNullOrEmpty(text))
+                    await clipboard.SetTextAsync(text);
+                ClearSelection();
+            }
+            e.Handled = true;
+            return;
         }
 
         // Ctrl+C: copy selection or send SIGINT
@@ -922,8 +938,8 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+V: paste
-        if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        // Ctrl+V: paste (Cmd+V on macOS)
+        if (e.Key == Key.V && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || IsMacCmd(e)))
         {
             if (_isDocumentView)
             {
@@ -1207,6 +1223,10 @@ public partial class TerminalControl : Control, IDisposable
         }
     }
 
+    /// <summary>The Command key on macOS, which Avalonia reports as Meta.</summary>
+    private static bool IsMacCmd(KeyEventArgs e) =>
+        OperatingSystem.IsMacOS() && e.KeyModifiers.HasFlag(KeyModifiers.Meta) && !e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
     private static bool IsAltV(KeyEventArgs e) =>
         e.Key == Key.V
         && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Shift | KeyModifiers.Alt)) == KeyModifiers.Alt;
@@ -1338,7 +1358,7 @@ public partial class TerminalControl : Control, IDisposable
             ScheduleCodeBlockScan();
         };
 
-        _pty = new PseudoConsole();
+        _pty = IPseudoConsole.Create();
         _pty.OutputReceived += data =>
         {
             _parser.Process(new ReadOnlySpan<byte>(data));
@@ -2747,7 +2767,7 @@ public partial class TerminalControl : Control, IDisposable
             BorderThickness = new Thickness(0),
             Padding = new Thickness(8, 6),
             FontSize = _fontSize,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New, monospace"),
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Courier New, monospace"),
             PlaceholderText = "Multi-line input (Enter=newline, Ctrl+Enter=send)",
             VerticalContentAlignment = VerticalAlignment.Top,
         };

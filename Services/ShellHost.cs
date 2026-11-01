@@ -9,6 +9,8 @@ public enum ShellKind
 {
     Cmd,
     PowerShell,
+    /// <summary>macOS/Linux: the user's login shell reading a POSIX command line.</summary>
+    Posix,
 }
 
 /// <summary>
@@ -40,6 +42,7 @@ public static class ShellHost
     /// </summary>
     public static ShellKind For(CliProvider? provider)
     {
+        if (!OperatingSystem.IsWindows()) return ShellKind.Posix;
         var kind = Pinned(provider) ?? Parse(AppSettings.Shared.TerminalShell);
         // A PowerShell that is not installed would leave the tab dead on arrival, with
         // nothing on screen to say why. cmd.exe is always there, so fall back to it.
@@ -87,9 +90,19 @@ public static class ShellHost
     /// CLI command itself.
     /// </summary>
     public static string Build(string command, string? workingDirectory, CliProvider? provider)
-        => For(provider) == ShellKind.PowerShell
-            ? BuildPowerShell(command, workingDirectory)
-            : BuildCmd(command, workingDirectory);
+        => For(provider) switch
+        {
+            ShellKind.Posix => BuildPosix(command, workingDirectory),
+            ShellKind.PowerShell => BuildPowerShell(command, workingDirectory),
+            _ => BuildCmd(command, workingDirectory),
+        };
+
+    /// <summary>The line the login shell runs with -c; exec so the CLI owns the terminal itself.</summary>
+    private static string BuildPosix(string command, string? workingDirectory)
+        => (HasFolder(workingDirectory) ? $"cd {PosixArg(workingDirectory!)} && " : "") + "exec " + command;
+
+    /// <summary>A POSIX single-quoted word: nothing inside expands, and a quote is closed, escaped and reopened.</summary>
+    internal static string PosixArg(string value) => "'" + value.Replace("'", "'\\''") + "'";
 
     /// <summary>
     /// /e:on and /v:off look redundant and are not: both are registry settings a machine can

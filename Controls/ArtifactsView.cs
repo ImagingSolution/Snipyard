@@ -217,7 +217,7 @@ public sealed class ArtifactsView : UserControl
 
         if (!WebViewHost.RuntimeAvailable(out _))
         {
-            ShowMessage(Loc.Get("PreviewNoRuntime"));
+            ShowMessage(Loc.Get(OperatingSystem.IsWindows() ? "PreviewNoRuntime" : "PreviewExternalOnly"));
             return;
         }
         if (_host == null)
@@ -305,16 +305,7 @@ public sealed class ArtifactsView : UserControl
     private static void RevealInExplorer(ArtifactEntry entry)
     {
         if (!HasLocalFile(entry)) return;
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{entry.LocalPath}\"",
-                UseShellExecute = true
-            });
-        }
-        catch { }
+        PlatformShell.Reveal(entry.LocalPath!);
     }
 
     private static void OpenExternally(string url)

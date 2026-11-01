@@ -415,6 +415,8 @@ public static class StatusLineRelay
     /// </summary>
     internal static string? FindGitBash()
     {
+        // Off Windows Claude Code runs the status line with the system shell, which is always there.
+        if (!OperatingSystem.IsWindows()) return "/bin/sh";
         var pinned = Environment.GetEnvironmentVariable("CLAUDE_CODE_GIT_BASH_PATH")?.Trim().Trim('"');
         if (!string.IsNullOrEmpty(pinned) && File.Exists(pinned)) return pinned;
 

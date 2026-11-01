@@ -35,7 +35,7 @@ public static class ChatTheme
     /// Prose face. The app ships its own Anthropic Sans; Segoe UI stands in for the Latin and
     /// Yu Gothic UI is what it falls back to for Japanese on Windows.
     /// </summary>
-    public static readonly FontFamily BodyFont = new("Segoe UI, Yu Gothic UI, Meiryo UI");
+    public static readonly FontFamily BodyFont = new("Segoe UI, Yu Gothic UI, Meiryo UI, Hiragino Sans");
 
     /// <summary>
     /// Prose size: same as the terminal font size, so the chat follows the user's font-size setting.
@@ -157,7 +157,7 @@ public class DocumentViewPanel : Panel
     private bool _isDark;
     private Typeface _codeTypeface;
     private double _baseFontSize = ChatTheme.BodySize(14);
-    private string _fontFamily = "Cascadia Mono, Consolas, Courier New";
+    private string _fontFamily = "Cascadia Mono, Consolas, Menlo, Courier New";
 
     public DocumentViewPanel(bool isDark, Typeface codeTypeface)
     {
@@ -677,7 +677,7 @@ public class DocumentViewPanel : Panel
 
     public void SetFont(string fontFamily, double fontSize)
     {
-        _fontFamily = fontFamily + ", Consolas, Courier New";
+        _fontFamily = fontFamily + ", Consolas, Menlo, Courier New";
         _codeTypeface = new Typeface(_fontFamily);
         _baseFontSize = ChatTheme.BodySize(fontSize);
         Rebuild();
@@ -2684,7 +2684,7 @@ public class WorkingSpinnerGlyph : TextBlock
     private static readonly string[] Frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
     // Segoe UI Symbol has the braille block; Inter has none of it, and falling through to the
     // emoji font would change the weight between frames.
-    private static readonly FontFamily GlyphFont = new("Segoe UI Symbol,Segoe UI Emoji,Segoe UI");
+    private static readonly FontFamily GlyphFont = new("Segoe UI Symbol,Segoe UI Emoji,Segoe UI,Apple Symbols,Apple Color Emoji");
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private int _frame;
     private bool _spinning = true;

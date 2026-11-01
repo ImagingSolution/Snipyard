@@ -70,8 +70,9 @@ public static class ProcessTree
         }
         catch { return found; }   // the root is already gone; it has no live descendants
 
-        var children = new Dictionary<int, List<int>>();
+        var children = OperatingSystem.IsWindows() ? new Dictionary<int, List<int>>() : UnixChildren();
         IntPtr snapshot = InvalidHandle;
+        if (OperatingSystem.IsWindows())
         try
         {
             snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -105,6 +106,36 @@ public static class ProcessTree
                 if (seen.Add(kid) && StartedAfter(kid, rootStart)) found.Add(kid);
         }
         return found;
+    }
+
+    /// <summary>The parent links on macOS/Linux, read from ps since there is no Toolhelp.</summary>
+    private static Dictionary<int, List<int>> UnixChildren()
+    {
+        var children = new Dictionary<int, List<int>>();
+        try
+        {
+            var psi = new ProcessStartInfo("ps", "-A -o pid= -o ppid=")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            };
+            using var ps = Process.Start(psi);
+            if (ps == null) return children;
+            var output = ps.StandardOutput.ReadToEnd();
+            ps.WaitForExit(2000);
+            foreach (var line in output.Split('\n'))
+            {
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2 || !int.TryParse(parts[0], out int pid) || !int.TryParse(parts[1], out int parent)) continue;
+                if (pid == parent) continue;
+                if (!children.TryGetValue(parent, out var list))
+                    children[parent] = list = new List<int>();
+                list.Add(pid);
+            }
+        }
+        catch { }
+        return children;
     }
 
     /// <summary>

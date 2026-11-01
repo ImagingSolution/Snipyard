@@ -37,7 +37,8 @@ public static class ClaudeProjectPaths
         var sb = new StringBuilder(path.Length);
         foreach (char c in path)
             sb.Append(char.IsLetterOrDigit(c) && c <= 127 ? c : '-');
-        return sb.ToString().Trim('-');
+        // "/Users/me/app" is written "-Users-me-app": the leading dash is the root, not padding.
+        return OperatingSystem.IsWindows() ? sb.ToString().Trim('-') : sb.ToString().TrimEnd('-');
     }
 
     /// <summary>

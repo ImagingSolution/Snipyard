@@ -60,7 +60,7 @@ public static class MarkdownParser
     }
 
     private static readonly Typeface ChatCodeFont =
-        new(new FontFamily("Cascadia Mono, Consolas, BIZ UDGothic, Yu Gothic UI, Meiryo"));
+        new(new FontFamily("Cascadia Mono, Consolas, Menlo, BIZ UDGothic, Yu Gothic UI, Meiryo, Hiragino Sans"));
 
     /// <summary>Background for inline code runs while a chat-style parse is running (UI thread only).</summary>
     private static IBrush? _inlineCodeBg;
@@ -122,7 +122,7 @@ public static class MarkdownParser
         // reads like the desktop app's instead: Cascadia Mono, whose strokes carry more weight than
         // Consolas', with a Japanese gothic behind it.
         var codeFont = chat != null ? ChatCodeFont
-            : codeTypeface ?? new Typeface("Cascadia Mono, Consolas, Courier New");
+            : codeTypeface ?? new Typeface("Cascadia Mono, Consolas, Menlo, Courier New");
 
         var lines = markdown.Split('\n');
         int i = 0;

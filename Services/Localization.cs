@@ -327,6 +327,8 @@ public static class Loc
         ["PreviewOpen"] = new() { ["English"] = "Open", ["日本語"] = "開く" },
         ["PreviewEmpty"] = new() { ["English"] = "Enter a URL to preview it here. A local server address that appears in the terminal is offered automatically.", ["日本語"] = "URL を入力するとここでプレビューします。ターミナルにローカルサーバーのアドレスが表示されると自動で提案します。" },
         ["PreviewDetected"] = new() { ["English"] = "Detected {0}", ["日本語"] = "{0} を検出しました" },
+        ["PreviewOpenedExternally"] = new() { ["English"] = "In-app preview is not available on this OS, so the page was opened in your browser.", ["日本語"] = "この OS ではアプリ内プレビューが使えないため、ブラウザーで開きました。" },
+        ["PreviewExternalOnly"] = new() { ["English"] = "In-app preview is not available on this OS. Use the ↗ button to open it in your browser.", ["日本語"] = "この OS ではアプリ内プレビューが使えません。↗ ボタンでブラウザーで開いてください。" },
         ["PreviewNoRuntime"] = new() { ["English"] = "The Microsoft Edge WebView2 Runtime is not installed, so the preview cannot be shown. Install it from Microsoft, or use \"Open in external browser\".", ["日本語"] = "Microsoft Edge WebView2 ランタイムがインストールされていないため、プレビューを表示できません。Microsoft からインストールするか、「外部ブラウザーで開く」を使ってください。" },
         ["SidePaneToggle"] = new() { ["English"] = "Show or hide the side pane (terminal, tasks)", ["日本語"] = "サイドペイン（ターミナル・タスク）の表示/非表示" },
         ["AskOther"] = new() { ["English"] = "Other", ["日本語"] = "その他" },

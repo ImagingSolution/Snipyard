@@ -21,7 +21,9 @@ No test framework is configured. Verify changes by building successfully (`dotne
 ## Release Process
 
 Whenever a GitHub Release is made (tag `vX.Y.Z`), it MUST carry the published
-single-file `Snipyard.exe` as an asset — the in-app updater (`UpdateService`)
+single-file `Snipyard.exe` as an asset, plus the macOS bundles
+`Snipyard-macos-arm64.tar.gz` and `Snipyard-macos-x64.tar.gz` (the macOS
+updater picks the one matching its architecture) — the in-app updater (`UpdateService`)
 reads `/releases/latest` and only recognizes a release as installable if it
 finds that exact asset. A tag with no asset silently breaks update checks for
 everyone, since GitHub always serves the newest release as "latest" regardless
@@ -41,9 +43,12 @@ git commit ...                      # build.number bumps on the next build
 dotnet publish -c Release -r win-x64 --self-contained true \
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
     -p:DebugType=none -o ./publish-single     # (or run publish.bat)
+powershell -NoProfile -ExecutionPolicy Bypass -File ./publish-mac.ps1
+                                    # macOS .app tarballs, same version (rewinds the counter)
 git add build.number && git commit -m "..."   # commit the bumped counter
 git push
 gh release create vX.Y.Z ./publish-single/Snipyard.exe \
+    ./publish-mac/Snipyard-macos-arm64.tar.gz ./publish-mac/Snipyard-macos-x64.tar.gz \
     --title vX.Y.Z --notes "..."
 ```
 
@@ -53,7 +58,9 @@ The version in the tag must match the `FileVersion` baked into
 
 ## Architecture
 
-Windows MDI terminal app for Claude Code, built with .NET 8.0 / Avalonia 12. All UI runs on a single STA thread.
+MDI terminal app for Claude Code on Windows and macOS, built with .NET 8.0 / Avalonia 12. All UI runs on a single STA thread.
+
+Platform split: `IPseudoConsole.Create()` picks ConPTY (`PseudoConsole`) on Windows and forkpty (`UnixPseudoConsole`) elsewhere; off Windows `ShellHost` emits a POSIX command line that the login shell runs (`$SHELL -l -c`). Windows-only features check `OperatingSystem.IsWindows()`: the WebView2 preview falls back to the system browser, Explorer calls go through `PlatformShell`, notifications use osascript/afplay, and the recycle bin is `~/.Trash`. macOS builds cannot be run on this machine; `publish-mac.ps1` only proves they compile and package.
 
 ### Terminal Pipeline
 

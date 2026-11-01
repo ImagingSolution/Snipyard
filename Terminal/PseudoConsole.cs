@@ -8,7 +8,26 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Snipyard.Terminal;
 
-public class PseudoConsole : IDisposable
+/// <summary>A child process attached to a pseudo terminal: ConPTY on Windows, forkpty elsewhere.</summary>
+public interface IPseudoConsole : IDisposable
+{
+    event Action<byte[]>? OutputReceived;
+    event Action? ProcessExited;
+    int ProcessId { get; }
+    bool IsRunning { get; }
+    void Start(string command, string? workingDirectory, int cols, int rows);
+    void WriteInput(byte[] data);
+    void WriteInput(string text);
+    void Resize(int cols, int rows);
+    bool WaitForExitTimeout(int milliseconds);
+    void Kill();
+
+    static IPseudoConsole Create() => OperatingSystem.IsWindows()
+        ? new PseudoConsole()
+        : new UnixPseudoConsole();
+}
+
+public class PseudoConsole : IPseudoConsole
 {
     private IntPtr _hPC;
     private SafeFileHandle? _pipeIn;   // PTY reads from this (we write to this)

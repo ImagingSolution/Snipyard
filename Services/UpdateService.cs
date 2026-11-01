@@ -41,7 +41,17 @@ public static class UpdateService
     private const string LatestUrl = "https://api.github.com/repos/ImagingSolution/Snipyard/releases/latest";
 
     /// <summary>The asset the releases carry. A release without it is not one this can install.</summary>
-    private const string AssetName = "Snipyard.exe";
+    private static readonly string AssetName = OperatingSystem.IsMacOS() ? MacAssetName : "Snipyard.exe";
+
+    /// <summary>
+    /// macOS releases ship the app bundle as a tarball per architecture (a tar keeps the
+    /// executable bit that a zip made on Windows loses). The updater only needs the binary inside.
+    /// </summary>
+    public static string MacAssetName =>
+        $"Snipyard-macos-{(System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64")}.tar.gz";
+
+    /// <summary>Where the executable sits inside the bundle, as the tarball spells it.</summary>
+    private const string MacBinaryEntry = "Snipyard.app/Contents/MacOS/Snipyard";
 
     /// <summary>
     /// The asset's name before the app was renamed from Claucraft. Releases made during the
@@ -53,7 +63,7 @@ public static class UpdateService
     public const string ReleasesUrl = "https://github.com/ImagingSolution/Snipyard/releases";
 
     /// <summary>Staged download, kept beside the executable so the final step is a same-volume move.</summary>
-    private const string StageName = "Snipyard.new.exe";
+    private static readonly string StageName = OperatingSystem.IsWindows() ? "Snipyard.new.exe" : "Snipyard.new";
 
     private const string OldSuffix = ".old";
 
@@ -178,7 +188,7 @@ public static class UpdateService
                     chosen = asset;
                     break;
                 }
-                if (chosen is null && string.Equals(name, LegacyAssetName, StringComparison.OrdinalIgnoreCase))
+                if (chosen is null && OperatingSystem.IsWindows() && string.Equals(name, LegacyAssetName, StringComparison.OrdinalIgnoreCase))
                     chosen = asset;
             }
             if (chosen is not { } pick) return null;
@@ -261,9 +271,10 @@ public static class UpdateService
             long read = 0;
             progress?.Report((0, total));
 
+            var download = OperatingSystem.IsWindows() ? stage : stage + ".tar.gz";
             await using (var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
             await using (var target = new FileStream(
-                stage, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true))
+                download, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true))
             {
                 var buffer = new byte[1 << 16];
                 int n;
@@ -275,12 +286,23 @@ public static class UpdateService
                 }
             }
 
-            Verify(stage, info.Size);
+            if (OperatingSystem.IsWindows())
+            {
+                Verify(stage, info.Size);
+                return stage;
+            }
+
+            if (info.Size > 0 && new FileInfo(download).Length != info.Size)
+                throw new IOException($"Downloaded {new FileInfo(download).Length} bytes, expected {info.Size}.");
+            ExtractMacBinary(download, stage);
+            TryDelete(download);
+            VerifyMachO(stage);
             return stage;
         }
         catch
         {
             TryDelete(stage);
+            TryDelete(stage + ".tar.gz");
             throw;
         }
     }
@@ -302,6 +324,30 @@ public static class UpdateService
             throw new IOException("The download is not a Windows executable.");
     }
 
+    private static void ExtractMacBinary(string archive, string target)
+    {
+        using var file = File.OpenRead(archive);
+        using var gzip = new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Decompress);
+        using var tar = new System.Formats.Tar.TarReader(gzip);
+        while (tar.GetNextEntry() is { } entry)
+        {
+            if (entry.Name.TrimStart('.', '/') != MacBinaryEntry || entry.DataStream == null) continue;
+            using var output = File.Create(target);
+            entry.DataStream.CopyTo(output);
+            return;
+        }
+        throw new IOException("The download does not contain " + MacBinaryEntry + ".");
+    }
+
+    /// <summary>64-bit Mach-O starts with 0xFEEDFACF, stored little-endian on both Mac architectures.</summary>
+    private static void VerifyMachO(string path)
+    {
+        using var stream = File.OpenRead(path);
+        Span<byte> magic = stackalloc byte[4];
+        if (stream.Read(magic) != 4 || magic[0] != 0xCF || magic[1] != 0xFA || magic[2] != 0xED || magic[3] != 0xFE)
+            throw new IOException("The download is not a macOS executable.");
+    }
+
     /// <summary>
     /// Puts the downloaded executable in place and starts it. Call this with the windows already
     /// closed: it replaces the image this process is running from.
@@ -316,6 +362,10 @@ public static class UpdateService
 
         // The running image cannot be deleted, but it can be renamed out of the way - which is
         // the whole trick behind an application replacing itself.
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(stagedPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
         File.Move(exe, old);
         try
         {
@@ -327,6 +377,17 @@ public static class UpdateService
             // failure rather than exiting into an empty folder.
             try { File.Move(old, exe); } catch { }
             throw;
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            // Relaunch the bundle the way Finder would, so the Dock sees an app and not a bare binary.
+            var bundle = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(exe)!, "..", ".."));
+            var psi = new ProcessStartInfo("open") { UseShellExecute = false };
+            if (bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase)) { psi.ArgumentList.Add("-n"); psi.ArgumentList.Add(bundle); }
+            else psi.FileName = exe;
+            Process.Start(psi);
+            return;
         }
 
         Process.Start(new ProcessStartInfo

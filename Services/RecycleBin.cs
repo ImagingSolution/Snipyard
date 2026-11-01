@@ -48,6 +48,7 @@ public static class RecycleBin
             var present = Array.FindAll(paths, p =>
                 !string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)));
             if (present.Length == 0) return null;
+            if (!OperatingSystem.IsWindows()) return MoveToTrash(present);
 
             var op = new ShFileOpStruct
             {
@@ -64,5 +65,31 @@ public static class RecycleBin
         {
             return ex.Message;
         }
+    }
+
+    /// <summary>
+    /// macOS keeps the user's Trash at ~/.Trash, and a move there is what Finder's own delete
+    /// does minus the "Put Back" record. Linux desktops use the freedesktop folder.
+    /// </summary>
+    private static string? MoveToTrash(string[] paths)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var trash = OperatingSystem.IsMacOS()
+            ? Path.Combine(home, ".Trash")
+            : Path.Combine(home, ".local", "share", "Trash", "files");
+        Directory.CreateDirectory(trash);
+
+        foreach (var path in paths)
+        {
+            var name = Path.GetFileName(path.TrimEnd('/'));
+            var target = Path.Combine(trash, name);
+            // Same rule as Finder: a name already in the Trash gets a suffix rather than replaced.
+            if (File.Exists(target) || Directory.Exists(target))
+                target = Path.Combine(trash, $"{Path.GetFileNameWithoutExtension(name)} {DateTime.Now:HH-mm-ss-fff}{Path.GetExtension(name)}");
+
+            if (Directory.Exists(path)) Directory.Move(path, target);
+            else File.Move(path, target);
+        }
+        return null;
     }
 }

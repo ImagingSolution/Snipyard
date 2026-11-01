@@ -140,7 +140,8 @@ public class CliProviderService
         {
             var dir = Active.ConfigDir;
             if (string.IsNullOrWhiteSpace(dir)) return "";
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), dir);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                dir.Replace('\\', Path.DirectorySeparatorChar));
         }
     }
 
@@ -287,6 +288,7 @@ public class CliProviderService
     {
         exe = (exe ?? "").Trim();
         if (exe.Length == 0) return "";
+        if (shell == ShellKind.Posix) return ShellHost.PosixArg(exe.Trim('"'));
         if (shell == ShellKind.PowerShell)
             return "& " + ShellHost.SingleQuote(exe.Trim('"'));
         if (exe.StartsWith("\"")) return exe;
@@ -297,10 +299,12 @@ public class CliProviderService
     /// Wraps a value so the shell hands it on as one literal argument. Both shells need the
     /// same thing said in their own escapes, and ShellHost is where each one is written down.
     /// </summary>
-    private static string QuoteArg(string value, ShellKind shell)
-        => shell == ShellKind.PowerShell
-            ? ShellHost.PowerShellArg(value)
-            : ShellHost.CmdArg(value);
+    private static string QuoteArg(string value, ShellKind shell) => shell switch
+    {
+        ShellKind.Posix => ShellHost.PosixArg(value),
+        ShellKind.PowerShell => ShellHost.PowerShellArg(value),
+        _ => ShellHost.CmdArg(value),
+    };
 
     private static string SanitizePrompt(string? prompt)
     {
@@ -349,8 +353,8 @@ public class CliProviderService
             // Routed through cmd.exe so .cmd/.bat shims (npm installs) work the same as .exe.
             var psi = new ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = $"/s /c \"\"{resolvedPath}\" --version\"",
+                FileName = OperatingSystem.IsWindows() ? "cmd.exe" : resolvedPath,
+                Arguments = OperatingSystem.IsWindows() ? $"/s /c \"\"{resolvedPath}\" --version\"" : "--version",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -455,6 +459,13 @@ public class CliProviderService
     private static List<string> CandidateExtensions(string exe)
     {
         var list = new List<string>();
+
+        // Elsewhere a command is its file name, extension or not.
+        if (!OperatingSystem.IsWindows())
+        {
+            list.Add("");
+            return list;
+        }
 
         // An explicit extension is tried as-is first.
         if (Path.HasExtension(exe))

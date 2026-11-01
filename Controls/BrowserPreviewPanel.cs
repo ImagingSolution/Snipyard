@@ -131,6 +131,13 @@ public sealed class BrowserPreviewPanel : DockPanel
         _url.Text = uri.ToString();
         if (uri.ToString() == _suggested) _suggestBar.IsVisible = false;
 
+        if (!OperatingSystem.IsWindows())
+        {
+            // WebView2 is Windows-only; the system browser stands in for the embedded one.
+            OpenExternally(uri.ToString());
+            _message.Text = Loc.Get("PreviewOpenedExternally");
+            return;
+        }
         if (!WebViewHost.RuntimeAvailable(out var version))
         {
             _message.Text = Loc.Get("PreviewNoRuntime");
@@ -204,6 +211,8 @@ internal sealed class WebViewHost : NativeControlHost
 
     public static bool RuntimeAvailable(out string? version)
     {
+        version = null;
+        if (!OperatingSystem.IsWindows()) return false;
         try
         {
             version = CoreWebView2Environment.GetAvailableBrowserVersionString();

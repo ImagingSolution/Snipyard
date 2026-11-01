@@ -50,10 +50,10 @@ public static class SetupDoctor
             var cliTask = Task.Run(() => CheckCliInstalled(cli));
             var nodeTask = Task.Run(() => CheckToolAsync("node", "DoctorNode", "Node.js",
                 "DoctorNodeHint",
-                "winget install OpenJS.NodeJS.LTS"));
+                OperatingSystem.IsWindows() ? "winget install OpenJS.NodeJS.LTS" : "brew install node"));
             var gitTask = Task.Run(() => CheckToolAsync("git", "DoctorGit", "Git",
                 "DoctorGitHint",
-                "winget install Git.Git"));
+                OperatingSystem.IsWindows() ? "winget install Git.Git" : "xcode-select --install"));
             var configTask = Task.Run(() => CheckConfigDir(cli));
             var authTask = Task.Run(() => CheckAuth(cli));
             var projectGitTask = Task.Run(() => CheckProjectGit(projectFolder));
@@ -205,8 +205,8 @@ public static class SetupDoctor
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = $"/s /c \"\"{exe}\" --version\"",
+                FileName = OperatingSystem.IsWindows() ? "cmd.exe" : exe,
+                Arguments = !OperatingSystem.IsWindows() ? "--version" : $"/s /c \"\"{exe}\" --version\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
