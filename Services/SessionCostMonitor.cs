@@ -27,6 +27,12 @@ public sealed class TurnCost
 
     public string Model { get; set; } = "";
 
+    /// <summary>
+    /// Reasoning effort the latest main-thread reply ran at, as the CLI records it on the
+    /// assistant line ("effort"). Null until a reply carries one; older CLIs never write it.
+    /// </summary>
+    public string? Effort { get; set; }
+
     /// <summary>Timestamp on the first record of the transcript.</summary>
     public DateTimeOffset? StartedAt { get; set; }
 
@@ -186,6 +192,9 @@ public sealed class SessionCostMonitor
 
         _state.Turns++;
         _state.Model = model;
+        if (root.TryGetProperty("effort", out var effortProp) && effortProp.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(effortProp.GetString()))
+            _state.Effort = effortProp.GetString()!.ToLowerInvariant();
         _state.LastTurnUsd = cost;
         _state.ContextTokens = input + cacheRead + cacheCreation;
         _state.NextTurnUsd = CostAnalytics.EstimateNextTurnCostUsd(model, _state.ContextTokens);

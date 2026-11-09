@@ -138,7 +138,7 @@ internal partial class AppShell
 
         TextBlock Caption(string key) => new()
         {
-            Text = Loc.Get(key),
+            Text = Shortcut.Label(Loc.Get(key)),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(DialogSubtle()),
@@ -258,7 +258,7 @@ internal partial class AppShell
         dialog.AddHandler(InputElement.KeyDownEvent, (_, args) =>
         {
             if (args.Key == Key.Escape) { Finish(null); args.Handled = true; }
-            else if (args.Key == Key.Enter && args.KeyModifiers.HasFlag(KeyModifiers.Control)) { Accept(); args.Handled = true; }
+            else if (args.Key == Key.Enter && Shortcut.HasPrimary(args.KeyModifiers)) { Accept(); args.Handled = true; }
         }, RoutingStrategies.Tunnel);
         dialog.Closed += (_, _) => { if (!answered) source.TrySetResult(null); };
 

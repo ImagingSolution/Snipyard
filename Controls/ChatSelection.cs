@@ -194,7 +194,7 @@ public sealed class ChatSelection
 
     private async void OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (!_spansBlocks || e.Key != Key.C || !e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+        if (!_spansBlocks || e.Key != Key.C || !Shortcut.HasPrimary(e.KeyModifiers)) return;
         e.Handled = true;
         await SetClipboard(SelectedText());
     }

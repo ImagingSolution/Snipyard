@@ -830,8 +830,8 @@ public partial class TerminalControl : Control, IDisposable
             // Let Enter through to be handled below (sends accumulated text)
             if (e.Key == Key.Enter)
                 goto handleKeys;
-            // Let Ctrl shortcuts through
-            bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            // Let Ctrl shortcuts through (and Cmd ones on macOS)
+            bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || IsMacCmd(e);
             if (!isCtrl && !IsAltV(e))
                 return; // Let TextBox handle normal editing (Backspace, arrows, etc.)
         }
@@ -849,7 +849,7 @@ public partial class TerminalControl : Control, IDisposable
             }
             bool isCtrlShortcut = (e.KeyModifiers.HasFlag(KeyModifiers.Control)
                 && e.Key is Key.C or Key.V or Key.F or Key.Up or Key.Down)
-                || (IsMacCmd(e) && e.Key is Key.C or Key.V);
+                || (IsMacCmd(e) && e.Key is Key.C or Key.V or Key.F or Key.Up or Key.Down);
             if (!isCtrlShortcut && !IsAltV(e))
                 return;
         }
@@ -879,10 +879,11 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+C: copy selection or send SIGINT
+        // Ctrl+C: copy selection or send SIGINT. On macOS copying is Cmd+C's job, so Ctrl+C
+        // always interrupts there, selection or not.
         if (e.Key == Key.C && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            if (_hasSelection)
+            if (_hasSelection && !Services.Shortcut.IsMac)
             {
                 var text = GetSelectedText();
                 var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
@@ -900,8 +901,8 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+F: toggle search bar
-        if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        // Ctrl+F (Cmd+F on macOS): toggle search bar
+        if (e.Key == Key.F && Services.Shortcut.HasPrimary(e.KeyModifiers))
         {
             // Chat view searches the conversation, not the terminal grid behind it
             if (_isDocumentView && _docViewPanel != null) _docViewPanel.ShowSearch();
@@ -910,8 +911,8 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+Up/Down: navigate between user prompts
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        // Ctrl+Up/Down (Cmd+Up/Down on macOS): navigate between user prompts
+        if (Services.Shortcut.HasPrimary(e.KeyModifiers))
         {
             if (e.Key == Key.Up)
             {
@@ -929,8 +930,8 @@ public partial class TerminalControl : Control, IDisposable
             }
         }
 
-        // Ctrl+0: reset font size to default
-        if (e.Key == Key.D0 && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        // Ctrl+0 (Cmd+0 on macOS): reset font size to default
+        if (e.Key == Key.D0 && Services.Shortcut.HasPrimary(e.KeyModifiers))
         {
             SetFont(_typeface.FontFamily.Name, 14);
             FontSizeChanged?.Invoke(14);
@@ -938,8 +939,8 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+V: paste (Cmd+V on macOS)
-        if (e.Key == Key.V && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || IsMacCmd(e)))
+        // Ctrl+V: paste (Cmd+V on macOS, where Ctrl+V goes to the CLI as a control character)
+        if (e.Key == Key.V && Services.Shortcut.HasPrimary(e.KeyModifiers))
         {
             if (_isDocumentView)
             {
@@ -974,7 +975,7 @@ public partial class TerminalControl : Control, IDisposable
 
         // Ctrl+X: cut the selection. Without one there is nothing to cut, so the key
         // falls through to the PTY the way any other unhandled key does.
-        if (e.Key == Key.X && e.KeyModifiers.HasFlag(KeyModifiers.Control) && _hasSelection)
+        if (e.Key == Key.X && Services.Shortcut.HasPrimary(e.KeyModifiers) && _hasSelection)
         {
             PushUndo(UndoKind.Structural);
             RunCaretEdit(CutSelectionAsync);
@@ -1176,7 +1177,23 @@ public partial class TerminalControl : Control, IDisposable
 
         // Ctrl+Z undoes the last edit to the CLI's input line, Ctrl+Shift+Z redoes it.
         // With nothing of ours to put back, the key keeps its terminal meaning and
-        // goes through as SIGTSTP.
+        // goes through as SIGTSTP. On macOS undo is Cmd+Z/Cmd+Shift+Z and Ctrl+Z is
+        // always SIGTSTP.
+        if (e.Key == Key.Z && Services.Shortcut.IsMac && IsMacCmd(e))
+        {
+            bool macRedo = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            var macStack = macRedo ? _redoStack : _undoStack;
+            if (!_isDocumentView && !_caretMoveInProgress && macStack.Count > 0)
+                RunCaretEdit(macRedo ? RedoAsync : UndoAsync);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Control) && Services.Shortcut.IsMac)
+        {
+            _pty?.WriteInput("\x1a");
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             bool redo = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
@@ -1190,8 +1207,9 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+Y: redo, the binding Windows editors use.
-        if (e.Key == Key.Y
+        // Ctrl+Y: redo, the binding Windows editors use. macOS has no such binding, so there
+        // Ctrl+Y stays the CLI's (the generic Ctrl+letter path below sends it).
+        if (e.Key == Key.Y && !Services.Shortcut.IsMac
             && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Shift | KeyModifiers.Alt)) == KeyModifiers.Control)
         {
             if (!_isDocumentView && !_caretMoveInProgress && _redoStack.Count > 0)
@@ -3104,8 +3122,8 @@ public partial class TerminalControl : Control, IDisposable
             return;
         }
 
-        // Ctrl+Enter: send
-        if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        // Ctrl+Enter (Cmd+Enter on macOS): send
+        if (e.Key == Key.Enter && Services.Shortcut.HasPrimary(e.KeyModifiers))
         {
             SendExpandedText();
             e.Handled = true;
@@ -6149,7 +6167,7 @@ public partial class TerminalControl : Control, IDisposable
     // Ctrl+Scroll: font zoom (works in both modes)
     private void OnZoomWheel(object? sender, PointerWheelEventArgs e)
     {
-        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.Delta.Y == 0) return;
+        if (!Services.Shortcut.HasPrimary(e.KeyModifiers) || e.Delta.Y == 0) return;
         double newSize = Math.Clamp(_fontSize + (e.Delta.Y > 0 ? 1 : -1), 8, 32);
         if (newSize != _fontSize)
         {
@@ -7111,24 +7129,26 @@ public partial class TerminalControl : Control, IDisposable
     /// </summary>
     private bool HandleChatEditKey(KeyEventArgs e)
     {
-        var mods = e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Shift | KeyModifiers.Alt);
+        // Cmd on macOS; there Ctrl+letter keeps reaching the CLI.
+        var mods = Services.Shortcut.Mods(e.KeyModifiers);
+        var primary = Services.Shortcut.Primary;
         bool boxSelection = _inputTextBox.SelectionStart != _inputTextBox.SelectionEnd;
         switch (e.Key)
         {
-            case Key.C when mods == KeyModifiers.Control && boxSelection:
+            case Key.C when mods == primary && boxSelection:
                 _inputTextBox.Copy();
                 return true;
-            case Key.X when mods == KeyModifiers.Control && (boxSelection || !_hasSelection):
+            case Key.X when mods == primary && (boxSelection || !_hasSelection):
                 _inputTextBox.Cut();    // nothing selected: nothing to cut, as in Notepad
                 return true;
-            case Key.Z when mods == KeyModifiers.Control:
+            case Key.Z when mods == primary:
                 _inputTextBox.Undo();
                 return true;
-            case Key.Z when mods == (KeyModifiers.Control | KeyModifiers.Shift):
-            case Key.Y when mods == KeyModifiers.Control:
+            case Key.Z when mods == (primary | KeyModifiers.Shift):
+            case Key.Y when mods == primary && !Services.Shortcut.IsMac:
                 _inputTextBox.Redo();
                 return true;
-            case Key.A when mods == KeyModifiers.Control:
+            case Key.A when mods == primary:
                 _inputTextBox.SelectAll();
                 return true;
         }

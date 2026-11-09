@@ -334,7 +334,7 @@ public class DiffWindow : Window
         };
         _commentBox.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            if (e.Key == Key.Enter && Shortcut.HasPrimary(e.KeyModifiers))
             {
                 SendComment();
                 e.Handled = true;

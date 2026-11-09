@@ -329,7 +329,7 @@ public class DocumentViewPanel : Panel
         Children.Add(_searchBar);
         AddHandler(KeyDownEvent, (_, e) =>
         {
-            if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control)) { ShowSearch(); e.Handled = true; }
+            if (e.Key == Key.F && Shortcut.HasPrimary(e.KeyModifiers)) { ShowSearch(); e.Handled = true; }
             else if (e.Key == Key.F3 && _searchBar.IsVisible) { StepMatch(e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? -1 : 1); e.Handled = true; }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 

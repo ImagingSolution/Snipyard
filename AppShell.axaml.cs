@@ -282,11 +282,18 @@ internal partial class AppShell : UserControl, IDockOwner
         public SessionCostMonitor Cost { get; } = new();
 
         /// <summary>
-        /// Reasoning effort this window is running at. Effort never reaches the transcript, so
-        /// this is the only record of it there is: seeded from the launch arguments, then moved
-        /// by the status bar dropdown. A level typed straight into the terminal goes unseen.
+        /// Reasoning effort this window is running at: seeded from the launch arguments or the
+        /// user's settings, moved by the status bar dropdown, and corrected from the transcript,
+        /// whose assistant lines carry the effort each reply ran at (CLIs before that never say,
+        /// and a level typed straight into the terminal then goes unseen).
         /// </summary>
         public string? Effort { get; set; }
+
+        /// <summary>
+        /// The effort the transcript last reported. Only a change in it moves <see cref="Effort"/>,
+        /// so a level just picked from the dropdown is not reverted by replies that predate it.
+        /// </summary>
+        public string? TranscriptEffort { get; set; }
 
         /// <summary>
         /// Display name of the model this window was launched on, read off its launch line or
@@ -569,7 +576,7 @@ internal partial class AppShell : UserControl, IDockOwner
         ToolTip.SetTip(BtnBrowseFolder, Loc.Get("SelectProjectFolder"));
 
         // Activity Bar tooltips
-        ToolTip.SetTip(BtnActivityExplorer, Loc.Get("ExplorerTooltip"));
+        ToolTip.SetTip(BtnActivityExplorer, Shortcut.Label(Loc.Get("ExplorerTooltip")));
         ToolTip.SetTip(BtnActivitySnippets, Loc.Get("SnippetsTooltip"));
         ToolTip.SetTip(BtnActivityWindows, Loc.Get("WindowsTooltip"));
         ToolTip.SetTip(BtnActivityDiagram, Loc.Get("DiagramTooltip"));
@@ -629,7 +636,7 @@ internal partial class AppShell : UserControl, IDockOwner
         ToolTip.SetTip(BtnLayoutMaximize, Loc.Get("FullView"));
 
         // Slash command panel
-        ToolTip.SetTip(BtnActivitySlash, Loc.Get("SlashCommandsTooltip"));
+        ToolTip.SetTip(BtnActivitySlash, Shortcut.Label(Loc.Get("SlashCommandsTooltip")));
         ToolTip.SetTip(BtnActivityExtensions, Loc.Get("ExtensionsTooltip"));
         ToolTip.SetTip(BtnRefreshExtensions, Loc.Get("Refresh"));
         TxtExtensionSearch.PlaceholderText = Loc.Get("ExtensionsSearch");
@@ -661,7 +668,7 @@ internal partial class AppShell : UserControl, IDockOwner
 
         // Source control, tokens & cost, and the live status readouts
         ApplySourceControlBadge();
-        ToolTip.SetTip(StatusBranchName, Loc.Get("SourceControlTooltip"));
+        ToolTip.SetTip(StatusBranchName, Shortcut.Label(Loc.Get("SourceControlTooltip")));
         ToolTip.SetTip(BtnBranchSwitch, Loc.Get("BranchSwitchTooltip"));
         LblWorktree.Text = Loc.Get("WorktreeSession");
         ToolTip.SetTip(ChkWorktree, Loc.Get("WorktreeTooltip"));
@@ -2081,7 +2088,7 @@ internal partial class AppShell : UserControl, IDockOwner
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = new Cursor(StandardCursorType.Hand)
         };
-        ToolTip.SetTip(saveButton, Loc.Get("EditorSaveTooltip"));
+        ToolTip.SetTip(saveButton, Shortcut.Label(Loc.Get("EditorSaveTooltip")));
 
         var closeButton = new Button
         {
@@ -2204,7 +2211,7 @@ internal partial class AppShell : UserControl, IDockOwner
         editorBox.TextChanged += (_, _) => OnEditorTextChanged(entry);
         editorBox.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            if (e.Key == Key.S && Shortcut.HasPrimary(e.KeyModifiers))
             {
                 _ = SaveEditorAsync(entry);
                 e.Handled = true;
@@ -2221,7 +2228,7 @@ internal partial class AppShell : UserControl, IDockOwner
         // ScrollViewer would otherwise scroll the file and swallow the wheel.
         container.AddHandler(InputElement.PointerWheelChangedEvent, (_, e) =>
         {
-            if (!e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+            if (!Shortcut.HasPrimary(e.KeyModifiers)) return;
             AdjustEditorFontSize(e.Delta.Y > 0 ? 1 : -1);
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
@@ -4547,7 +4554,7 @@ internal partial class AppShell : UserControl, IDockOwner
         PullRequestBadge.IsVisible = _prBadgeCount > 0;
         PullRequestBadgeText.Text = _prBadgeCount > 99 ? "99+" : _prBadgeCount.ToString();
 
-        var tip = Loc.Get("SourceControlTooltip");
+        var tip = Shortcut.Label(Loc.Get("SourceControlTooltip"));
         if (_badgeCount > 0)
             tip += "\n" + (_badgeDetail.Length > 0
                 ? _badgeDetail
@@ -5022,18 +5029,20 @@ internal partial class AppShell : UserControl, IDockOwner
     }
 
     // ── Global Keyboard Shortcuts ──
+    // Written as Ctrl below; on macOS each one is Cmd instead (see Shortcut). Ctrl+Tab stays
+    // Ctrl on both, as it is in every macOS app with tabs.
 
     private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
     {
         // Ctrl+N: New session
-        if (e.Key == Key.N && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (e.Key == Key.N && Shortcut.HasPrimary(e.KeyModifiers))
         {
             LaunchClaudeWithInitialPrompt();
             e.Handled = true;
             return;
         }
         // Ctrl+W: Close active tab
-        if (e.Key == Key.W && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (e.Key == Key.W && Shortcut.HasPrimary(e.KeyModifiers))
         {
             CloseActiveWindow();
             e.Handled = true;
@@ -5047,28 +5056,28 @@ internal partial class AppShell : UserControl, IDockOwner
             return;
         }
         // Ctrl+Shift+P: Command palette
-        if (e.Key == Key.P && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        if (e.Key == Key.P && Shortcut.Mods(e.KeyModifiers) == (Shortcut.Primary | KeyModifiers.Shift))
         {
             ShowCommandPalette();
             e.Handled = true;
             return;
         }
         // Ctrl+Shift+E: Toggle explorer
-        if (e.Key == Key.E && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        if (e.Key == Key.E && Shortcut.Mods(e.KeyModifiers) == (Shortcut.Primary | KeyModifiers.Shift))
         {
             ToggleSidePanel(SidebarPanel.Explorer);
             e.Handled = true;
             return;
         }
         // Ctrl+Shift+G: Toggle source control
-        if (e.Key == Key.G && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        if (e.Key == Key.G && Shortcut.Mods(e.KeyModifiers) == (Shortcut.Primary | KeyModifiers.Shift))
         {
             ToggleSidePanel(SidebarPanel.SourceControl);
             e.Handled = true;
             return;
         }
         // Ctrl+Shift+M: Toggle memory
-        if (e.Key == Key.M && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        if (e.Key == Key.M && Shortcut.Mods(e.KeyModifiers) == (Shortcut.Primary | KeyModifiers.Shift))
         {
             ToggleSidePanel(SidebarPanel.Memory);
             e.Handled = true;
@@ -5092,7 +5101,7 @@ internal partial class AppShell : UserControl, IDockOwner
         }
         // Ctrl+/: slash command palette
         if ((e.Key == Key.OemQuestion || e.Key == Key.Divide)
-            && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            && Shortcut.HasPrimary(e.KeyModifiers))
         {
             ToggleSlashPanel();
             e.Handled = true;
@@ -6862,14 +6871,14 @@ internal partial class AppShell : UserControl, IDockOwner
         // the Japanese label is what makes the palette usable at all in that language.
         var commands = new List<(string Key, string English, string Shortcut, Action Execute)>
         {
-            ("NewSession", "New Session", "Ctrl+N", () => LaunchClaudeWithInitialPrompt()),
-            ("PaletteSourceControl", "Source Control", "Ctrl+Shift+G", () => ToggleSidePanel(SidebarPanel.SourceControl)),
-            ("PaletteMemory", "Memory", "Ctrl+Shift+M", () => ToggleSidePanel(SidebarPanel.Memory)),
+            ("NewSession", "New Session", Shortcut.Label("Ctrl+N"), () => LaunchClaudeWithInitialPrompt()),
+            ("PaletteSourceControl", "Source Control", Shortcut.Label("Ctrl+Shift+G"), () => ToggleSidePanel(SidebarPanel.SourceControl)),
+            ("PaletteMemory", "Memory", Shortcut.Label("Ctrl+Shift+M"), () => ToggleSidePanel(SidebarPanel.Memory)),
             ("CostDashboard", "Tokens & Cost", "", () => new Controls.CostDashboardWindow(_isDark, _projectFolder).Show(HostWindow)),
-            ("PaletteCloseTab", "Close Tab", "Ctrl+W", CloseActiveWindow),
+            ("PaletteCloseTab", "Close Tab", Shortcut.Label("Ctrl+W"), CloseActiveWindow),
             ("PaletteNextTab", "Next Tab", "Ctrl+Tab", () => CycleWindows(1)),
             ("PalettePrevTab", "Previous Tab", "Ctrl+Shift+Tab", () => CycleWindows(-1)),
-            ("PaletteToggleExplorer", "Toggle Explorer", "Ctrl+Shift+E", () => ToggleSidePanel(SidebarPanel.Explorer)),
+            ("PaletteToggleExplorer", "Toggle Explorer", Shortcut.Label("Ctrl+Shift+E"), () => ToggleSidePanel(SidebarPanel.Explorer)),
             ("PaletteToggleSnippets", "Toggle Snippets", "", () => ToggleSidePanel(SidebarPanel.Snippets)),
             ("PaletteToggleWindows", "Toggle Windows Panel", "", () => ToggleSidePanel(SidebarPanel.Windows)),
             ("PaletteToggleSettings", "Toggle Settings", "", () => ToggleSidePanel(SidebarPanel.Settings)),
@@ -6884,13 +6893,13 @@ internal partial class AppShell : UserControl, IDockOwner
             ("SaveWorkspaceAs", "Save Workspace As...", "", () => _ = PromptSaveWorkspaceAsync()),
             ("RestoreWorkspace", "Restore Workspace", "", () => RestoreWorkspace()),
             ("Workspaces", "Workspaces...", "", ShowWorkspaceList),
-            ("SlashCommands", "Slash Commands", "Ctrl+/", ToggleSlashPanel),
+            ("SlashCommands", "Slash Commands", Shortcut.Label("Ctrl+/"), ToggleSlashPanel),
             ("Checkpoints", "Checkpoints", "", ShowCheckpointList),
             ("StopTask", "Stop", "Esc", () => OnStopTask(null, null!)),
             ("PaletteUsageChart", "Usage Chart", "", () => new UsageChartWindow().Show(HostWindow)),
             ("SetupDoctor", "Setup Check", "", () => _ = ShowSetupDoctorAsync()),
             ("Shortcuts", "Keyboard Shortcuts", "F1", ShowShortcutSheet),
-            ("CommandPalette", "Command Palette", "Ctrl+Shift+P", ShowCommandPalette),
+            ("CommandPalette", "Command Palette", Shortcut.Label("Ctrl+Shift+P"), ShowCommandPalette),
         };
 
         var dialog = new Window
@@ -7432,11 +7441,24 @@ internal partial class AppShell : UserControl, IDockOwner
         {
             Content = Loc.Get("RunAgain"),
             MinWidth = 96,
-            HorizontalAlignment = HorizontalAlignment.Right,
             HorizontalContentAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 4, 0, 0),
         };
-        rows.Children.Add(rerun);
+        var close = new Button
+        {
+            Content = Loc.Get("Close"),
+            MinWidth = 96,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            IsDefault = true,
+            IsCancel = true,
+        };
+        rows.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Margin = new Thickness(0, 4, 0, 0),
+            Children = { rerun, close },
+        });
 
         var dialog = CreateToolDialog(Loc.Get("SetupDoctor"), 480, 0);
         dialog.SizeToContent = SizeToContent.Height;
@@ -7448,6 +7470,7 @@ internal partial class AppShell : UserControl, IDockOwner
         };
 
         rerun.Click += (_, _) => { dialog.Close(); _ = ShowSetupDoctorAsync(); };
+        close.Click += (_, _) => dialog.Close();
         _ = dialog.ShowDialog(HostWindow);
     }
 
@@ -7461,31 +7484,33 @@ internal partial class AppShell : UserControl, IDockOwner
         {
             ("ShortcutsWindows", new[]
             {
-                ("Ctrl+N", Loc.Get("NewSession")),
-                ("Ctrl+W", Loc.Get("Close")),
+                (Shortcut.Label("Ctrl+N"), Loc.Get("NewSession")),
+                (Shortcut.Label("Ctrl+W"), Loc.Get("Close")),
                 ("Ctrl+Tab", "Next tab"),
                 ("Ctrl+Shift+Tab", "Previous tab"),
             }),
             ("ShortcutsPanels", new[]
             {
-                ("Ctrl+Shift+E", Loc.Get("EXPLORER")),
-                ("Ctrl+Shift+G", Loc.Get("SOURCE_CONTROL")),
-                ("Ctrl+Shift+M", Loc.Get("MEMORY")),
-                ("Ctrl+Shift+P", Loc.Get("CommandPalette")),
-                ("Ctrl+/", Loc.Get("SlashCommands")),
+                (Shortcut.Label("Ctrl+Shift+E"), Loc.Get("EXPLORER")),
+                (Shortcut.Label("Ctrl+Shift+G"), Loc.Get("SOURCE_CONTROL")),
+                (Shortcut.Label("Ctrl+Shift+M"), Loc.Get("MEMORY")),
+                (Shortcut.Label("Ctrl+Shift+P"), Loc.Get("CommandPalette")),
+                (Shortcut.Label("Ctrl+/"), Loc.Get("SlashCommands")),
                 ("F1", Loc.Get("Shortcuts")),
             }),
             ("ShortcutsTerminal", new[]
             {
-                ("Ctrl+F", "Search"),
-                ("Ctrl+Up / Ctrl+Down", "Jump between prompts"),
-                ("Ctrl+Scroll", "Zoom font"),
-                ("Ctrl+0", "Reset font size"),
+                (Shortcut.Label("Ctrl+F"), "Search"),
+                (Shortcut.Label("Ctrl+Up / Ctrl+Down"), "Jump between prompts"),
+                (Shortcut.Label("Ctrl+Scroll"), "Zoom font"),
+                (Shortcut.Label("Ctrl+0"), "Reset font size"),
                 ("Shift+Enter", "New line without sending"),
-                ("Ctrl+Enter", "Send from the expanded input"),
+                (Shortcut.Label("Ctrl+Enter"), "Send from the expanded input"),
                 ("Esc", Loc.Get("StopTask")),
-                ("Ctrl+C", "Copy, or interrupt when nothing is selected"),
-                ("Ctrl+V", "Paste, images included"),
+                Shortcut.IsMac
+                    ? ("Cmd+C / Ctrl+C", "Copy / interrupt")
+                    : ("Ctrl+C", "Copy, or interrupt when nothing is selected"),
+                (Shortcut.Label("Ctrl+V"), "Paste, images included"),
             }),
         };
 
@@ -7875,6 +7900,17 @@ internal partial class AppShell : UserControl, IDockOwner
         if (model.Length == 0) model = StartingModelName();
 
         ShowModelName(model);
+
+        if (_activeChildIndex >= 0 && _activeChildIndex < _children.Count
+            && session.Effort is { } seen)
+        {
+            var child = _children[_activeChildIndex];
+            if (!string.Equals(child.TranscriptEffort, seen, StringComparison.OrdinalIgnoreCase))
+            {
+                child.TranscriptEffort = seen;
+                child.Effort = seen;
+            }
+        }
 
         ApplyEffortReadout();
     }
