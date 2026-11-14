@@ -228,8 +228,13 @@ public class VtParser
         bool isPrivate = paramStr.StartsWith('?');
         if (isPrivate) paramStr = paramStr[1..];
 
-        bool isGt = paramStr.StartsWith('>');
-        if (isGt) paramStr = paramStr[1..];
+        // '>', '<' and '=' prefixed sequences are keyboard-protocol and query controls
+        // (xterm modifyOtherKeys "CSI > 4;2 m", kitty "CSI > 1 u" / "CSI < u", DA2/DA3,
+        // XTVERSION), none of which touch the screen. Running them through the plain
+        // dispatch would turn "CSI > 4;2 m" into SGR underline+dim and "CSI > 1 u" into a
+        // cursor restore. ConPTY strips them on Windows; a Unix pty passes them through.
+        if (paramStr.Length > 0 && paramStr[0] is '>' or '<' or '=')
+            return;
 
         // Handle space-prefixed sequences (e.g., "0 q" for cursor style)
         if (paramStr.EndsWith(' '))
