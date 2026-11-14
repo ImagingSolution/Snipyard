@@ -2,7 +2,7 @@
 
 *Formerly Claucraft.*
 
-A Windows MDI (Multiple Document Interface) terminal application for AI coding CLIs, built with Avalonia UI.
+An MDI (Multiple Document Interface) terminal application for AI coding CLIs on Windows and macOS, built with Avalonia UI.
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is the default, and Codex CLI, GitHub Copilot CLI, Antigravity CLI and Grok CLI can be picked per session. Run several sessions side by side in one window - or dragged out into windows of their own - each viewable as a raw terminal or as a desktop-app-style Chat View, with a project explorer, a git/GitHub panel, snippets, cost and usage readouts, and a dark/light theme.
 
@@ -29,12 +29,12 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 ### Sessions and AI CLIs
 
 - **CLI Provider Support** - Claude Code, Codex CLI, GitHub Copilot CLI, Antigravity CLI and Grok CLI, each with its own executable (`claude`, `codex`, `copilot`, `agy`, `grok`), command-line shape, one-shot invocation, config folder and launch profiles. Switchable per session from the toolbar; the executable and the new/continue/resume argument templates are editable in Settings
-- **Host Shell** - Launch the CLI under `cmd.exe` or PowerShell. Argument quoting follows whichever shell is chosen, and a PowerShell that is not installed falls back to `cmd.exe` instead of leaving a dead tab
+- **Host Shell** - On Windows, launch the CLI under `cmd.exe` or PowerShell. Argument quoting follows whichever shell is chosen, and a PowerShell that is not installed falls back to `cmd.exe` instead of leaving a dead tab. On macOS the CLI always runs in your login shell (`$SHELL -l -c`), so the `PATH` from your shell profile applies
 - **Session Management** - Resume previous sessions with AI-generated titles (from `sessions-index.json`) and timestamps. The picker is searchable, and a session can be thrown away from it
 - **Session Index Auto-Creation** - Creates and updates `sessions-index.json` per project so the CLI can fill in AI-generated conversation summaries
 - **Running Session Guard** - A session only runs in one place at a time, so launching one another process already holds is blocked before it can die at the prompt
 - **Project Context Switching** - Switching MDI windows switches the project folder, explorer, session list and git status with it
-- **Execution Targets (WSL / SSH)** - The New Session menu lists installed WSL distros, recent and `~/.ssh/config` SSH hosts, and a `host:/path` prompt. The CLI runs through `wsl.exe` / `ssh.exe` with each argument escaped for the remote side. WSL windows read their transcript through `\\wsl.localhost`, so Chat View works; SSH windows stay in the terminal view. Remote windows are left out of saved workspaces
+- **Execution Targets (WSL / SSH)** - The New Session menu lists installed WSL distros (Windows only), recent and `~/.ssh/config` SSH hosts, and a `host:/path` prompt. The CLI runs through `wsl.exe` / `ssh` with each argument escaped for the remote side. WSL windows read their transcript through `\\wsl.localhost`, so Chat View works; SSH windows stay in the terminal view. Remote windows are left out of saved workspaces
 - **Scheduled Tasks** - Open a new session in a chosen project with a prompt - once, daily or every N minutes - while the app is running. A slot missed by more than 30 minutes is skipped rather than caught up
 - **Remote Control** - A session tab's menu sends `/remote-control` to continue the session from another device
 - **Launch Profiles** - Light / Standard / Deep from the toolbar, applied on every launch path - new, `-c` continue and `-r` resume alike - so a resumed session cannot silently balloon back to an unbounded context. Light ships its own `--settings` file that trims MCP servers, tool descriptions and auto-memory out of the prompt prefix; Deep switches to `--model opus --effort high`
@@ -45,7 +45,7 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 
 ### Terminal
 
-- **VT100/ANSI Terminal** - Custom parser over Windows ConPTY: SGR with 256-colour and truecolour, alternate buffer, scroll regions, wide characters, Unicode code points and zero-width combining marks, and a 10,000-line scrollback
+- **VT100/ANSI Terminal** - Custom parser over Windows ConPTY (a forkpty pseudo-terminal on macOS): SGR with 256-colour and truecolour, alternate buffer, scroll regions, wide characters, Unicode code points and zero-width combining marks, and a 10,000-line scrollback
 - **Caret and Line Editing** - A blinking insert-bar caret, click to move it, Shift+arrows to select, and undo/redo of the CLI's input line
 - **Terminal Search (Ctrl+F)** - Full-text search across output and scrollback with match highlighting, navigation, regex mode and a case-sensitive toggle
 - **Prompt Navigation (Ctrl+↑/↓)** - Move between user questions with a position counter (Q 2/5). Tracks input positions live and scans buffer separators for past conversations
@@ -54,16 +54,16 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 - **@-Mention Completion** - Typing `@` completes file paths from a project file index, and files can be picked from the input row
 - **Shift+Enter Line Break** - Insert a newline without submitting
 - **File Drag & Drop** - Drop files onto the terminal to insert their paths, or drag them in from the Explorer panel
-- **Image Attachments** - Clipboard images (Ctrl+V or Alt+V) and pasted or dropped image files go to a thumbnail strip above the input instead of being inserted as text. Click a thumbnail to view it, × to remove it; the images are sent with the prompt
+- **Image Attachments** - Clipboard images (Ctrl+V / Cmd+V on macOS, or Alt+V) and pasted or dropped image files go to a thumbnail strip above the input instead of being inserted as text. Click a thumbnail to view it, × to remove it; the images are sent with the prompt
 - **Bracketed Paste Mode** - Wraps pasted text in bracket sequences for modern shells
 - **Terminal Output Export** - Save output as a text file from the tab context menu
 
 ### Project and files
 
-- **Project Explorer** - File tree with syntax-aware icons and colour-coded file types (40+ extensions), Windows shell icons, auto-refresh on file system changes, and file preview on selection. Ctrl/Shift+click selects several items, and dragging them drops every path into the terminal as `@`-references
+- **Project Explorer** - File tree with syntax-aware icons and colour-coded file types (40+ extensions), Windows shell icons (on Windows), auto-refresh on file system changes, and file preview on selection. Ctrl/Shift+click selects several items, and dragging them drops every path into the terminal as `@`-references
 - **In-App Text Editor** - Edit text files straight from the explorer (Ctrl+S to save), preserving the original encoding, line endings and BOM. Binary, oversized or non-UTF8 files stay read-only instead of getting corrupted
-- **Open With** - Right-click a file to hand it to the Windows "Open with" picker
-- **Safe Delete** - Deleting from the explorer sends to the Windows Recycle Bin rather than removing permanently
+- **Open With** - Right-click a file to hand it to the Windows "Open with" picker, or the macOS application chooser
+- **Safe Delete** - Deleting from the explorer sends to the Windows Recycle Bin (the Trash on macOS) rather than removing permanently
 
 ### Source control
 
@@ -80,7 +80,7 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 ### Knowing what the AI is doing
 
 - **Mode Badge** - Shows the session's mode (manual / auto-accept / plan / bypass) in the status bar, painted the colour the CLI paints it. Click to cycle. If a CLI update renames the modes, it falls back to "Switch Mode" and still sends Shift+Tab
-- **Model & Effort** - The active model and reasoning effort are shown in the status bar and switchable from it, and a model switch made inside the CLI is followed. The model list learns the newest version of each model line from recent transcripts, so it does not go stale when a new model ships
+- **Model & Effort** - The active model and reasoning effort are shown in the status bar and switchable from it, and a model or effort switch made inside the CLI is followed (effort is read off the transcript once a reply carries it). The model list learns the newest version of each model line from recent transcripts, so it does not go stale when a new model ships
 - **Activity Indicator** - Says what the AI is doing while it is quiet - reading a file, running a command, searching - with elapsed time, plus a sweep bar under the input row while a turn is in flight
 - **Context Meter** - Reads the context left out of the CLI's own output and shows it as a meter, with one-click `/compact` when it runs low
 - **Cache Expiry Warning** - An idle session close to its prompt-cache expiry gets a "compact now" banner, and switching model or effort mid-session compacts first when there is enough context worth saving
@@ -91,7 +91,7 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 - **Error Diagnosis Banner** - Known failures (signed out, rate limited, usage limit, network down, outdated CLI) surface as a banner with the fix one click away, and advisory banners hide themselves again
 - **Stop Button** - A stop control on the input row of whichever window is working, for anyone who does not know Escape interrupts the AI
 - **Turn-End Frame Blink** - The active window's blue frame blinks twice when the AI hands the turn back, so a finished session is visible at a glance across tiled windows
-- **Task Completion Notification** - A tray toast, a sound and a taskbar flash when a session finishes in the background, including when a turn finishes generating. All can be turned off in Settings
+- **Task Completion Notification** - A tray toast, a sound and a taskbar flash when a session finishes in the background, including when a turn finishes generating. On macOS it is a Notification Center banner and a system sound. All can be turned off in Settings
 - **Status Bar** - Repository name, branch, changed file count, terminal status, mode badge, model, current activity, context left, rate limits, and daily usage with a colour-gradient progress bar
 
 ### Chat View
@@ -104,7 +104,7 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 - **Edit & Rewind** - Hover a prompt for Edit and Rewind. Both drive the CLI's `/rewind` to that prompt; Edit also puts the text back into the box
 - **Tasks & Subagents** - A strip under the title rebuilds Claude's task checklist from TodoWrite / TaskCreate / TaskUpdate and lists every Agent call. A subagent with its own transcript opens in place of the session, with a bar to go back
 - **Find (Ctrl+F)** - Highlights every message holding the query; Enter / Shift+Enter or F3 step through the matches
-- **Side Pane** - A resizable pane next to the conversation with two tabs: **Terminal** (the same session's live terminal) and **Preview** (an embedded WebView2 browser with an address bar, back, reload and open-in-browser; a localhost address seen in the terminal output is offered as a one-click suggestion)
+- **Side Pane** - A resizable pane next to the conversation with two tabs: **Terminal** (the same session's live terminal) and **Preview** (an embedded WebView2 browser with an address bar, back, reload and open-in-browser; a localhost address seen in the terminal output is offered as a one-click suggestion). On macOS the page opens in the system browser instead
 
 ### Panels, commands and tools
 
@@ -117,11 +117,11 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 - **Tokens & Cost Dashboard** - A window reading `message.usage` out of session transcripts: 7/30/90-day range, a "this project only" scope toggle, a daily cost bar chart, and top-50 breakdowns by model, project and session, with CSV export
 - **Usage Chart** - 14-day chart of messages, tool calls and sessions
 - **Automatic Checkpoints** - Snapshots the project before each prompt so the work can be rolled back. Git repos use `git stash create`, which builds a commit object without touching the working tree; other folders get a file snapshot
-- **Setup Check** - One-click diagnosis of the CLI, Node.js, Git, the config folder and sign-in state, with a copyable fix command for anything missing. Runs itself on first launch and stays quiet when everything is fine
+- **Setup Check** - One-click diagnosis of the CLI, Node.js, Git, the config folder and sign-in state, with a copyable fix command for anything missing (`winget` on Windows, `brew` / `xcode-select` on macOS). Runs itself on first launch and stays quiet when everything is fine
 - **Keyboard Shortcut Sheet (F1)** - Every shortcut on one screen, grouped by what it acts on
 - **Built-in Help** - The "?" button opens illustrated English/Japanese help pages in the browser, including a comparison with Claude Desktop, the Claude Code CLI and the VS Code extension
 - **Settings Panel** - Grouped into categories: language, font family and size, host shell, initial prompt, theme, notifications, checkpoints, live status, commit message language, plan, launch model and effort, AI provider executable and argument templates, and a shortcut to the `.claude` folder
-- **Self-Update** - Checks the project's GitHub releases for a newer version, downloads it next to the running executable and verifies it before committing to anything, then steps the old executable aside by renaming it and restarts into the new one - undoing the rename if the swap fails, so there is no state with the application removed but not put back. Only the published single-file build can replace itself; a development build points at the releases page instead
+- **Self-Update** - Checks the project's GitHub releases for a newer version, downloads it next to the running executable and verifies it before committing to anything, then steps the old executable aside by renaming it and restarts into the new one - undoing the rename if the swap fails, so there is no state with the application removed but not put back. On macOS it takes the release tarball for its architecture, replaces the executable inside `Snipyard.app` and relaunches the bundle. Only the published build can replace itself; a development build points at the releases page instead
 
 ### Everything else
 
@@ -130,35 +130,41 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 
 ## Keyboard Shortcuts
 
-| | |
-|---|---|
-| **Windows and tabs** | |
-| Ctrl+N | New session |
-| Ctrl+W | Close |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
-| **Panels** | |
-| Ctrl+Shift+E | Explorer |
-| Ctrl+Shift+G | Source control |
-| Ctrl+Shift+P | Command palette |
-| Ctrl+/ | Slash commands |
-| F1 | Keyboard shortcuts |
-| **Terminal** | |
-| Ctrl+F | Search |
-| Ctrl+↑ / Ctrl+↓ | Jump between prompts |
-| Ctrl+Scroll | Zoom font |
-| Ctrl+0 | Reset font size |
-| Shift+Enter | New line without sending |
-| Ctrl+Enter | Send from the expanded input |
-| Esc | Stop the task |
-| Ctrl+C | Copy, or interrupt when nothing is selected |
-| Ctrl+V | Paste, images included |
-| Alt+V | Paste a clipboard image |
-| Shift+Tab | Cycle the AI mode |
-| Ctrl+S | Save the file open in the editor |
-| **Chat View** | |
-| Ctrl+F | Find in the conversation |
-| Enter / Shift+Enter, F3 | Next / previous match |
-| Tab | Take the suggested prompt into the box |
+On macOS the app's shortcuts use Cmd, and Ctrl+letter always goes to the CLI (Ctrl+C interrupts, Ctrl+W deletes a word, and so on). The F1 sheet and tooltips show the keys for the platform you are on.
+
+| Windows | macOS | |
+|---|---|---|
+| **Windows and tabs** | | |
+| Ctrl+N | Cmd+N | New session |
+| Ctrl+W | Cmd+W | Close |
+| Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| **Panels** | | |
+| Ctrl+Shift+E | Cmd+Shift+E | Explorer |
+| Ctrl+Shift+G | Cmd+Shift+G | Source control |
+| Ctrl+Shift+M | Cmd+Shift+M | Memory |
+| Ctrl+Shift+P | Cmd+Shift+P | Command palette |
+| Ctrl+/ | Cmd+/ | Slash commands |
+| F1 | F1 | Keyboard shortcuts |
+| **Terminal** | | |
+| Ctrl+F | Cmd+F | Search |
+| Ctrl+↑ / Ctrl+↓ | Cmd+↑ / Cmd+↓ | Jump between prompts |
+| Ctrl+Scroll | Cmd+Scroll | Zoom font |
+| Ctrl+0 | Cmd+0 | Reset font size |
+| Shift+Enter | Shift+Enter | New line without sending |
+| Ctrl+Enter | Cmd+Enter | Send from the expanded input |
+| Esc | Esc | Stop the task |
+| Ctrl+C | Cmd+C | Copy (on Windows: interrupt when nothing is selected) |
+| | Ctrl+C | Interrupt, even with a selection |
+| Ctrl+V | Cmd+V | Paste, images included |
+| Ctrl+X | Cmd+X | Cut the selection |
+| Ctrl+Z / Ctrl+Shift+Z | Cmd+Z / Cmd+Shift+Z | Undo / redo on the CLI's input line |
+| Alt+V | Option+V | Paste a clipboard image |
+| Shift+Tab | Shift+Tab | Cycle the AI mode |
+| Ctrl+S | Cmd+S | Save the file open in the editor |
+| **Chat View** | | |
+| Ctrl+F | Cmd+F | Find in the conversation |
+| Enter / Shift+Enter, F3 | Enter / Shift+Enter, F3 | Next / previous match |
+| Tab | Tab | Take the suggested prompt into the box |
 
 ## Tech Stack
 
@@ -166,10 +172,10 @@ A Windows MDI (Multiple Document Interface) terminal application for AI coding C
 |---|---|
 | Framework | .NET 8.0 / C# |
 | UI | Avalonia 12.1.1 + Fluent Theme + Inter fonts |
-| Terminal | Custom VT100/ANSI parser over PseudoConsole (ConPTY) |
-| Browser preview | Microsoft Edge WebView2 |
+| Terminal | Custom VT100/ANSI parser over PseudoConsole (ConPTY) on Windows, forkpty on macOS |
+| Browser preview | Microsoft Edge WebView2 (Windows; the system browser on macOS) |
 | Serialization | System.Text.Json |
-| External tools | The AI CLI itself, `git`, `gh` for pull requests, `wsl.exe` / `ssh.exe` for remote sessions |
+| External tools | The AI CLI itself, `git`, `gh` for pull requests, `wsl.exe` / `ssh` for remote sessions |
 
 ## Project Structure
 
@@ -192,6 +198,7 @@ Snipyard/
 │   ├── TerminalCell.cs             # Cell model (Unicode code point, colours, attributes)
 │   ├── VtParser.cs                 # ANSI/VT state machine, SGR 256-colour and truecolour
 │   ├── PseudoConsole.cs            # Windows ConPTY P/Invoke wrapper
+│   ├── UnixPseudoConsole.cs        # macOS forkpty pseudo-terminal, run through the login shell
 │   ├── CodeBlockDetector.cs        # Finds mermaid/chart blocks and Excalidraw MCP calls
 │   └── DiagramWindow.cs            # Zoomable, pannable diagram viewer
 ├── Controls/
@@ -214,13 +221,16 @@ Snipyard/
 │   └── MarqueeBar.cs               # Turn-in-progress sweep bar
 ├── Services/
 │   ├── AppSettings.cs              # Configuration persistence
+│   ├── AppPaths.cs                 # App data folders, and the one-time copy from Claucraft
+│   ├── PlatformShell.cs            # Explorer on Windows, Finder / "Open with" on macOS
+│   ├── Shortcut.cs                 # Ctrl on Windows, Cmd on macOS for app shortcuts
 │   ├── Localization.cs             # EN/JP string localization
 │   ├── SnippetStore.cs             # Snippet storage
 │   ├── WorkspaceService.cs         # Named workspace save/restore
 │   ├── CliProvider.cs              # CLI provider / launch-profile data model
 │   ├── CliProviderService.cs       # Provider registry, command building, argument quoting
 │   ├── CliOneShotRunner.cs         # One throwaway answer from the CLI, with no session state
-│   ├── ShellHost.cs                # Which shell (cmd.exe / PowerShell) a session launches inside
+│   ├── ShellHost.cs                # Which shell (cmd.exe / PowerShell / login shell) a session launches inside
 │   ├── ProcessRunner.cs            # Shared process-launch plumbing
 │   ├── ProcessTree.cs              # Walks child processes to find a window's CLI process
 │   ├── SessionService.cs           # Session list and sessions-index management
@@ -249,11 +259,11 @@ Snipyard/
 │   ├── ExtensionCatalog.cs         # MCP server / skill / plugin listing
 │   ├── ProjectFileIndex.cs         # @-mention file path index
 │   ├── TextFileEditor.cs           # Explorer's in-app text file read/write
-│   ├── RecycleBin.cs               # Safe delete via the Windows Recycle Bin
+│   ├── RecycleBin.cs               # Safe delete via the Windows Recycle Bin / macOS Trash
 │   ├── ShellIconProvider.cs        # Windows Explorer icons, cached, as Avalonia images
 │   ├── MarkdownParser.cs           # Lightweight Markdown renderer
 │   ├── DiagramCache.cs             # Persists Excalidraw diagrams per project
-│   ├── NotificationService.cs      # Tray notifications and sound
+│   ├── NotificationService.cs      # Tray notifications and sound (Notification Center on macOS)
 │   ├── UpdateService.cs            # GitHub release check, download and staging
 │   ├── CommitMessageService.cs     # AI-drafted commit messages (EN/JP)
 │   ├── SecretScanService.cs        # Per-file secret scan of the staged diff
@@ -266,20 +276,28 @@ Snipyard/
 │                                   # Git process wrapper, write ops, status/log readers, path decoding, graph layout
 ├── Help/                           # Embedded EN/JP help pages and screenshots
 ├── icon.ico / icon.png             # Application icon
-├── app.manifest                    # Application manifest
-├── publish.bat                     # One-click self-contained release build
+├── app.manifest                    # Application manifest (Windows)
+├── publish.bat                     # One-click self-contained Windows release build
+├── publish-mac.ps1                 # macOS Snipyard.app tarballs (arm64 / x64), run on Windows after publish.bat
+├── run-mac.command                 # Double-click in Finder to build and run on macOS
 └── build.number                    # Auto-incrementing build number
 ```
 
 ## Requirements
 
-- Windows 10 or later
+- Windows 10 or later, or macOS 11 (Big Sur) or later on Apple Silicon or Intel
 - Node.js - the supported CLIs are npm packages
 - At least one AI CLI: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (default), Codex CLI, GitHub Copilot CLI, Antigravity CLI or Grok CLI
 - `git` (optional) - for the source control panel, commit graph and worktree isolation
 - `gh` (optional) - for pull requests, CI status and repository creation
-- Microsoft Edge WebView2 Runtime (optional, preinstalled on Windows 11) - for the Chat View browser preview
-- WSL or OpenSSH client (optional) - for WSL / SSH sessions
+- Microsoft Edge WebView2 Runtime (optional, Windows only, preinstalled on Windows 11) - for the Chat View browser preview
+- WSL (optional, Windows only) or an OpenSSH client - for WSL / SSH sessions
+
+## Installing on macOS
+
+Download `Snipyard-macos-arm64.tar.gz` (Apple Silicon) or `Snipyard-macos-x64.tar.gz` (Intel) from the releases page, extract it and move `Snipyard.app` to Applications. The app is not signed or notarized, so macOS blocks the first launch: allow it under System Settings > Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/Snipyard.app`. Later updates come through the in-app updater.
+
+The CLI is started through your login shell, so a `claude` installed with npm, Homebrew or the native installer is found as long as your shell profile puts it on `PATH`.
 
 ## Build
 
@@ -292,9 +310,16 @@ dotnet run
 
 # Publish single-file executable (or just run publish.bat)
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o ./publish-single
+
+# macOS Snipyard.app tarballs for arm64 and x64, same version (run on Windows after the publish above)
+powershell -NoProfile -ExecutionPolicy Bypass -File ./publish-mac.ps1
 ```
 
+On a Mac, install the .NET SDK (8.0 or later) and run `dotnet run`, or double-click `run-mac.command` in Finder, which expects the SDK in `~/.dotnet`.
+
 ## Data Locations
+
+On macOS, `%APPDATA%\Snipyard` and `%LOCALAPPDATA%\Snipyard` are both `~/Library/Application Support/Snipyard/`, and the paths under `~/.claude` are the same as on Windows.
 
 | Data | Path |
 |---|---|
@@ -335,7 +360,7 @@ MIT
 
 *旧名 Claucraft。*
 
-Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（マルチドキュメントインターフェース）ターミナルアプリケーションです。
+Avalonia UI で構築された、Windows と macOS で動く AI コーディング CLI 用の MDI（マルチドキュメントインターフェース）ターミナルアプリケーションです。
 
 既定は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) で、Codex CLI・GitHub Copilot CLI・Antigravity CLI・Grok CLI をセッションごとに選択できます。複数のセッションを1つのウィンドウに並べて（あるいは別ウィンドウに切り離して）実行でき、各セッションは生のターミナルとデスクトップアプリ風のチャットビューを切り替えて表示できます。プロジェクトエクスプローラー、git / GitHub パネル、スニペット、コストと使用量の表示、ダーク/ライトテーマを備えています。
 
@@ -356,12 +381,12 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 ### セッションと AI CLI
 
 - **CLI プロバイダー対応** - Claude Code / Codex CLI / GitHub Copilot CLI / Antigravity CLI / Grok CLI。それぞれ独自の実行ファイル（`claude` / `codex` / `copilot` / `agy` / `grok`）・コマンドライン形式・ワンショット実行・設定フォルダ・起動プロファイルを持つ。ツールバーからセッションごとに切替でき、実行ファイルと新規/継続/再開の引数テンプレートは設定パネルで編集可能
-- **ホストシェル** - CLI を `cmd.exe` と PowerShell のどちらで起動するかを選択。引数のクォートは選んだシェルに追従し、PowerShell が未インストールの場合はタブが死なないよう `cmd.exe` にフォールバック
+- **ホストシェル** - Windows では CLI を `cmd.exe` と PowerShell のどちらで起動するかを選択。引数のクォートは選んだシェルに追従し、PowerShell が未インストールの場合はタブが死なないよう `cmd.exe` にフォールバック。macOS では常にログインシェル（`$SHELL -l -c`）で起動するため、シェルのプロファイルで設定した `PATH` がそのまま使われる
 - **セッション管理** - 過去のセッションを AI 生成タイトル（`sessions-index.json` より）とタイムスタンプ付きで再開。一覧は検索可能で、不要なセッションは削除できる
 - **セッションインデックス自動作成** - プロジェクトごとに `sessions-index.json` を自動作成・更新し、CLI が AI 生成の会話要約を追加できるようにする
 - **多重起動ガード** - 1つのセッションは同時に1か所でしか動かないため、他プロセスが保持中のセッションの起動をプロンプト表示前にブロック
 - **プロジェクトコンテキスト切替** - MDI ウィンドウの切替に合わせて、プロジェクトフォルダ・エクスプローラー・セッション一覧・git 状態を自動切替
-- **実行環境（WSL / SSH）** - 新規セッションのメニューに、インストール済みの WSL ディストリビューション、最近使った SSH ホストと `~/.ssh/config` のホスト、`host:/path` の入力欄を表示。CLI は `wsl.exe` / `ssh.exe` 経由で起動し、引数はリモート側向けにエスケープする。WSL のウィンドウは `\\wsl.localhost` 経由で記録を読むためチャットビューも使える。SSH のウィンドウはターミナル表示のみ。リモートのウィンドウはワークスペースに保存しない
+- **実行環境（WSL / SSH）** - 新規セッションのメニューに、インストール済みの WSL ディストリビューション（Windows のみ）、最近使った SSH ホストと `~/.ssh/config` のホスト、`host:/path` の入力欄を表示。CLI は `wsl.exe` / `ssh` 経由で起動し、引数はリモート側向けにエスケープする。WSL のウィンドウは `\\wsl.localhost` 経由で記録を読むためチャットビューも使える。SSH のウィンドウはターミナル表示のみ。リモートのウィンドウはワークスペースに保存しない
 - **スケジュールタスク** - 指定したプロジェクトで新規セッションを開いてプロンプトを送信。1回・毎日・N分ごとを選べ、アプリの起動中に実行する。30分以上過ぎた実行枠は後から追いかけずスキップ
 - **リモート操作** - セッションタブのメニューから `/remote-control` を送り、別の端末からセッションを続けられる
 - **起動プロファイル** - ツールバーで Light / Standard / Deep を選択。新規・`-c` 継続・`-r` 再開のすべての起動経路に適用されるため、再開時にコンテキスト上限が外れて膨らむことがない。Light は独自の `--settings` ファイルで MCP サーバー・ツール説明・自動メモリをプロンプト冒頭から削減、Deep は `--model opus --effort high` に切替
@@ -372,7 +397,7 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 
 ### ターミナル
 
-- **VT100/ANSI ターミナル** - Windows ConPTY 上の自前パーサー。SGR の 256 色・トゥルーカラー、代替バッファ、スクロール領域、全角文字、Unicode コードポイントとゼロ幅結合文字に対応。スクロールバックは 10,000 行
+- **VT100/ANSI ターミナル** - Windows ConPTY（macOS では forkpty の疑似端末）上の自前パーサー。SGR の 256 色・トゥルーカラー、代替バッファ、スクロール領域、全角文字、Unicode コードポイントとゼロ幅結合文字に対応。スクロールバックは 10,000 行
 - **キャレットと行編集** - 点滅する挿入バー型キャレット、クリックでの移動、Shift+矢印での選択、CLI 入力行の Undo/Redo
 - **ターミナル検索 (Ctrl+F)** - 出力とスクロールバック履歴の全文検索。マッチハイライト、ナビゲーション、正規表現モード、大文字小文字区別トグル
 - **プロンプトナビゲーション (Ctrl+↑/↓)** - 質問単位で移動し、現在位置を表示（Q 2/5）。セッション中の入力位置を追跡し、過去の会話はバッファ内のセパレータを検出して移動
@@ -381,16 +406,16 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 - **@メンション補完** - `@` を入力するとプロジェクトのファイルインデックスからパスを補完。入力行からファイルを選ぶこともできる
 - **Shift+Enter 改行** - 送信せずに改行を挿入
 - **ファイルドラッグ＆ドロップ** - ターミナルにファイルをドロップしてパスを入力。エクスプローラーパネルからのドラッグにも対応
-- **画像の添付** - クリップボードの画像（Ctrl+V または Alt+V）や、貼り付け・ドロップした画像ファイルは、テキストとして挿入せず入力欄の上のサムネイル列に追加。クリックで拡大表示、×で削除でき、送信時にプロンプトと一緒に渡される
+- **画像の添付** - クリップボードの画像（Ctrl+V / macOS は Cmd+V、または Alt+V）や、貼り付け・ドロップした画像ファイルは、テキストとして挿入せず入力欄の上のサムネイル列に追加。クリックで拡大表示、×で削除でき、送信時にプロンプトと一緒に渡される
 - **ブラケットペーストモード** - モダンシェル向けにペーストテキストをブラケットシーケンスでラップ
 - **ターミナル出力のエクスポート** - タブの右クリックメニューから出力をテキストファイルに保存
 
 ### プロジェクトとファイル
 
-- **プロジェクトエクスプローラー** - 構文対応アイコンと色分け（40種類以上の拡張子）、Windows のシェルアイコン、ファイルシステム変更時の自動リフレッシュ、選択時のプレビュー表示。Ctrl/Shift+クリックで複数選択でき、まとめてドラッグすると全パスを `@` 参照としてターミナルへ入力
+- **プロジェクトエクスプローラー** - 構文対応アイコンと色分け（40種類以上の拡張子）、Windows のシェルアイコン（Windows のみ）、ファイルシステム変更時の自動リフレッシュ、選択時のプレビュー表示。Ctrl/Shift+クリックで複数選択でき、まとめてドラッグすると全パスを `@` 参照としてターミナルへ入力
 - **アプリ内テキストエディタ** - エクスプローラーからテキストファイルを直接編集（Ctrl+S で保存）。元のエンコーディング・改行コード・BOM を保持。バイナリ・大きすぎる・非 UTF-8 のファイルは壊さないよう読み取り専用のまま
-- **プログラムから開く** - ファイルを右クリックして Windows の「プログラムから開く」に渡す
-- **安全な削除** - エクスプローラーからの削除は完全削除ではなく Windows のごみ箱へ
+- **プログラムから開く** - ファイルを右クリックして Windows の「プログラムから開く」、または macOS のアプリケーション選択に渡す
+- **安全な削除** - エクスプローラーからの削除は完全削除ではなく Windows のごみ箱（macOS ではゴミ箱）へ
 
 ### ソースコントロール
 
@@ -407,7 +432,7 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 ### AI の状態を知る
 
 - **モードバッジ** - セッションのモード（手動 / 自動承認 / プラン / 権限スキップ）を、CLI が使う色そのままでステータスバーに表示。クリックで切替。CLI の仕様変更でモード名を読めなくなった場合は「Switch Mode」表示に戻り、Shift+Tab の送信は継続
-- **モデルと effort** - 使用中のモデルと推論 effort をステータスバーに表示し、そこから切替可能。CLI 内部で行われたモデル切替にも追従。モデル一覧は直近の記録から各系統の最新バージョンを学習するため、新しいモデルが出ても古いままにならない
+- **モデルと effort** - 使用中のモデルと推論 effort をステータスバーに表示し、そこから切替可能。CLI 内部で行われたモデルや effort の切替にも追従（effort は応答の記録から読み取る）。モデル一覧は直近の記録から各系統の最新バージョンを学習するため、新しいモデルが出ても古いままにならない
 - **実行中インジケータ** - AI が黙っている間に何をしているか（ファイル読み込み・コマンド実行・検索）を経過時間付きで表示。ターン実行中は入力行の下にスイープバーを表示
 - **コンテキスト残量メーター** - CLI の出力から残量を読み取ってメーター表示。少なくなったらワンクリックで `/compact`
 - **キャッシュ期限の警告** - アイドル中のセッションがプロンプトキャッシュの期限に近づくと「今すぐ compact」バナーを表示。会話途中でモデルや effort を切り替えるときは、残す価値のあるコンテキストがあれば先に compact する
@@ -418,7 +443,7 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 - **エラー診断バナー** - 既知の失敗（サインアウト・レート制限・使用量上限・ネットワーク断・CLI が古い）を検出し、対処をワンクリックで実行できるバナーを表示。お知らせ系のバナーは自動で消える
 - **停止ボタン** - 作業中のウィンドウの入力行に停止ボタンを表示。Escape で中断できることを知らなくても止められる
 - **ターン終了時の枠点滅** - AI が応答を終えて入力待ちに戻ると、アクティブウィンドウの青い枠が2回点滅。タイル表示でもどのセッションが終わったか一目で分かる
-- **タスク完了通知** - バックグラウンドでセッションが終了したとき、およびターンの生成が完了したときに、トースト通知・効果音・タスクバー点滅で知らせる。いずれも設定でオフにできる
+- **タスク完了通知** - バックグラウンドでセッションが終了したとき、およびターンの生成が完了したときに、トースト通知・効果音・タスクバー点滅で知らせる（macOS では通知センターとシステムサウンド）。いずれも設定でオフにできる
 - **ステータスバー** - リポジトリ名、ブランチ、変更ファイル数、ターミナル状態、モードバッジ、モデル、実行中の作業、コンテキスト残量、レート制限、日次使用量（緑→黄→赤のプログレスバー）を表示
 
 ### チャットビュー
@@ -431,7 +456,7 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 - **編集と巻き戻し** - プロンプトにホバーすると「編集」「巻き戻し」を表示。どちらも CLI の `/rewind` でそのプロンプトまで戻り、編集では元の文を入力欄に戻す
 - **タスクとサブエージェント** - タイトル下の帯に、TodoWrite / TaskCreate / TaskUpdate から組み立てた Claude のタスク一覧と、すべての Agent 呼び出しを表示。記録のあるサブエージェントはセッションの代わりに開き、戻るバーで元に戻れる
 - **会話内検索 (Ctrl+F)** - 検索語を含むメッセージを強調表示し、Enter / Shift+Enter または F3 で移動
-- **サイドペイン** - 会話の横にサイズ変更できるペインを開く。タブは **Terminal**（同じセッションのライブターミナル）と **Preview**（アドレスバー・戻る・再読み込み・ブラウザで開くを備えた WebView2 ブラウザ。ターミナル出力に出た localhost のアドレスをワンクリックで開ける候補として表示）の2つ
+- **サイドペイン** - 会話の横にサイズ変更できるペインを開く。タブは **Terminal**（同じセッションのライブターミナル）と **Preview**（アドレスバー・戻る・再読み込み・ブラウザで開くを備えた WebView2 ブラウザ。ターミナル出力に出た localhost のアドレスをワンクリックで開ける候補として表示）の2つ。macOS ではページをシステムのブラウザで開く
 
 ### パネル・コマンド・ツール
 
@@ -444,11 +469,11 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 - **トークン／コストダッシュボード** - セッション記録の `message.usage` を集計する専用ウィンドウ。7/30/90日の期間切替、「このプロジェクトのみ」表示、日別コストの棒グラフ、モデル別・プロジェクト別・セッション別の上位50件内訳、CSV エクスポート
 - **使用量チャート** - 過去14日のメッセージ数・ツール呼び出し数・セッション数をグラフ表示
 - **自動チェックポイント** - プロンプト送信前にプロジェクトのスナップショットを取り、巻き戻し可能にする。Git リポジトリでは作業ツリーに触れない `git stash create` を使い、Git 管理外のフォルダはファイルコピーで保存
-- **セットアップ診断** - CLI・Node.js・Git・設定フォルダ・サインイン状態をワンクリックで診断し、足りないものにはコピーできる対処コマンドを表示。初回起動時に自動実行され、問題がなければ何も出さない
+- **セットアップ診断** - CLI・Node.js・Git・設定フォルダ・サインイン状態をワンクリックで診断し、足りないものにはコピーできる対処コマンド（Windows は `winget`、macOS は `brew` / `xcode-select`）を表示。初回起動時に自動実行され、問題がなければ何も出さない
 - **ショートカット一覧 (F1)** - 全ショートカットを対象ごとにグループ分けして1画面で表示
 - **ヘルプ** - 「?」ボタンで、スクリーンショット付きの日英ヘルプページをブラウザで開く。Claude Desktop・Claude Code CLI・VS Code 拡張との比較も収録
 - **設定パネル** - カテゴリごとにグループ分け。言語、フォントとサイズ、ホストシェル、初期プロンプト、テーマ、通知、チェックポイント、ライブステータス、コミットメッセージ言語、プラン、起動時のモデルと effort、AI プロバイダーの実行ファイルと引数テンプレート、`.claude` フォルダへのショートカット
-- **自動アップデート** - GitHub リリースを確認し、新しいバージョンがあれば実行中の exe の隣にダウンロードして検証したうえで適用。古い exe はリネームで退避してから新しい exe を配置し、失敗した場合はリネームを戻すため「アプリが消えたまま」の状態にはならない。自己置換できるのは発行済みの単一ファイルビルドのみで、開発ビルドはリリースページを案内する
+- **自動アップデート** - GitHub リリースを確認し、新しいバージョンがあれば実行中の exe の隣にダウンロードして検証したうえで適用。古い exe はリネームで退避してから新しい exe を配置し、失敗した場合はリネームを戻すため「アプリが消えたまま」の状態にはならない。macOS ではアーキテクチャに合ったリリースの tar.gz を取得し、`Snipyard.app` 内の実行ファイルを置き換えてアプリを再起動する。自己置換できるのは発行済みのビルドのみで、開発ビルドはリリースページを案内する
 
 ### その他
 
@@ -457,35 +482,41 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 
 ## キーボードショートカット
 
-| | |
-|---|---|
-| **ウィンドウとタブ** | |
-| Ctrl+N | 新規セッション |
-| Ctrl+W | 閉じる |
-| Ctrl+Tab / Ctrl+Shift+Tab | 次 / 前のタブ |
-| **パネル** | |
-| Ctrl+Shift+E | エクスプローラー |
-| Ctrl+Shift+G | ソースコントロール |
-| Ctrl+Shift+P | コマンドパレット |
-| Ctrl+/ | スラッシュコマンド |
-| F1 | ショートカット一覧 |
-| **ターミナル** | |
-| Ctrl+F | 検索 |
-| Ctrl+↑ / Ctrl+↓ | プロンプト間を移動 |
-| Ctrl+スクロール | フォントズーム |
-| Ctrl+0 | フォントサイズをリセット |
-| Shift+Enter | 送信せずに改行 |
-| Ctrl+Enter | 拡張入力から送信 |
-| Esc | タスクを停止 |
-| Ctrl+C | コピー（選択がなければ中断） |
-| Ctrl+V | 貼り付け（画像も可） |
-| Alt+V | クリップボードの画像を貼り付け |
-| Shift+Tab | AI モードを切替 |
-| Ctrl+S | エディタで開いているファイルを保存 |
-| **チャットビュー** | |
-| Ctrl+F | 会話内を検索 |
-| Enter / Shift+Enter、F3 | 次 / 前の一致へ移動 |
-| Tab | 提案されたプロンプトを入力欄に取り込む |
+macOS ではアプリのショートカットに Cmd を使い、Ctrl+文字は常に CLI へ送られます（Ctrl+C は中断、Ctrl+W は単語削除など）。F1 の一覧とツールチップには、使用中の OS に合わせたキーが表示されます。
+
+| Windows | macOS | |
+|---|---|---|
+| **ウィンドウとタブ** | | |
+| Ctrl+N | Cmd+N | 新規セッション |
+| Ctrl+W | Cmd+W | 閉じる |
+| Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab | 次 / 前のタブ |
+| **パネル** | | |
+| Ctrl+Shift+E | Cmd+Shift+E | エクスプローラー |
+| Ctrl+Shift+G | Cmd+Shift+G | ソースコントロール |
+| Ctrl+Shift+M | Cmd+Shift+M | メモリ |
+| Ctrl+Shift+P | Cmd+Shift+P | コマンドパレット |
+| Ctrl+/ | Cmd+/ | スラッシュコマンド |
+| F1 | F1 | ショートカット一覧 |
+| **ターミナル** | | |
+| Ctrl+F | Cmd+F | 検索 |
+| Ctrl+↑ / Ctrl+↓ | Cmd+↑ / Cmd+↓ | プロンプト間を移動 |
+| Ctrl+スクロール | Cmd+スクロール | フォントズーム |
+| Ctrl+0 | Cmd+0 | フォントサイズをリセット |
+| Shift+Enter | Shift+Enter | 送信せずに改行 |
+| Ctrl+Enter | Cmd+Enter | 拡張入力から送信 |
+| Esc | Esc | タスクを停止 |
+| Ctrl+C | Cmd+C | コピー（Windows では選択がなければ中断） |
+| | Ctrl+C | 中断（選択中でも） |
+| Ctrl+V | Cmd+V | 貼り付け（画像も可） |
+| Ctrl+X | Cmd+X | 選択範囲を切り取り |
+| Ctrl+Z / Ctrl+Shift+Z | Cmd+Z / Cmd+Shift+Z | CLI 入力行の元に戻す / やり直し |
+| Alt+V | Option+V | クリップボードの画像を貼り付け |
+| Shift+Tab | Shift+Tab | AI モードを切替 |
+| Ctrl+S | Cmd+S | エディタで開いているファイルを保存 |
+| **チャットビュー** | | |
+| Ctrl+F | Cmd+F | 会話内を検索 |
+| Enter / Shift+Enter、F3 | Enter / Shift+Enter、F3 | 次 / 前の一致へ移動 |
+| Tab | Tab | 提案されたプロンプトを入力欄に取り込む |
 
 ## 技術スタック
 
@@ -493,10 +524,10 @@ Avalonia UI で構築された、AI コーディング CLI 用の Windows MDI（
 |---|---|
 | フレームワーク | .NET 8.0 / C# |
 | UI | Avalonia 12.1.1 + Fluent テーマ + Inter フォント |
-| ターミナル | PseudoConsole (ConPTY) 上の自前 VT100/ANSI パーサー |
-| ブラウザプレビュー | Microsoft Edge WebView2 |
+| ターミナル | Windows は PseudoConsole (ConPTY)、macOS は forkpty 上の自前 VT100/ANSI パーサー |
+| ブラウザプレビュー | Microsoft Edge WebView2（Windows。macOS はシステムのブラウザ） |
 | シリアライズ | System.Text.Json |
-| 外部ツール | AI CLI 本体、`git`、プルリクエスト用の `gh`、リモートセッション用の `wsl.exe` / `ssh.exe` |
+| 外部ツール | AI CLI 本体、`git`、プルリクエスト用の `gh`、リモートセッション用の `wsl.exe` / `ssh` |
 
 ## プロジェクト構成
 
@@ -519,6 +550,7 @@ Snipyard/
 │   ├── TerminalCell.cs             # セルモデル（Unicode コードポイント、色、属性）
 │   ├── VtParser.cs                 # ANSI/VT 状態機械。SGR の 256 色・トゥルーカラー対応
 │   ├── PseudoConsole.cs            # Windows ConPTY の P/Invoke ラッパー
+│   ├── UnixPseudoConsole.cs        # macOS の forkpty 疑似端末（ログインシェル経由で起動）
 │   ├── CodeBlockDetector.cs        # mermaid/chart ブロックと Excalidraw MCP 呼び出しの検出
 │   └── DiagramWindow.cs            # ズーム・パン可能なダイアグラムビューア
 ├── Controls/
@@ -541,13 +573,16 @@ Snipyard/
 │   └── MarqueeBar.cs               # ターン実行中のスイープバー
 ├── Services/
 │   ├── AppSettings.cs              # 設定の永続化
+│   ├── AppPaths.cs                 # アプリのデータフォルダと Claucraft からの初回コピー
+│   ├── PlatformShell.cs            # Windows はエクスプローラー、macOS は Finder／アプリ選択
+│   ├── Shortcut.cs                 # アプリのショートカット修飾キー（Windows は Ctrl、macOS は Cmd）
 │   ├── Localization.cs             # EN/JP 文字列のローカライズ
 │   ├── SnippetStore.cs             # スニペットの保存
 │   ├── WorkspaceService.cs         # 名前付きワークスペースの保存・復元
 │   ├── CliProvider.cs              # CLI プロバイダー／起動プロファイルのデータモデル
 │   ├── CliProviderService.cs       # プロバイダー登録、コマンド構築、引数クォート
 │   ├── CliOneShotRunner.cs         # セッション状態を持たない CLI 単発実行
-│   ├── ShellHost.cs                # セッションを起動するシェル（cmd.exe / PowerShell）の決定
+│   ├── ShellHost.cs                # セッションを起動するシェル（cmd.exe / PowerShell / ログインシェル）の決定
 │   ├── ProcessRunner.cs            # プロセス起動の共通処理
 │   ├── ProcessTree.cs              # 子プロセスを辿ってウィンドウの CLI プロセスを特定
 │   ├── SessionService.cs           # セッション一覧と sessions-index の管理
@@ -576,11 +611,11 @@ Snipyard/
 │   ├── ExtensionCatalog.cs         # MCP サーバー／スキル／プラグインの一覧取得
 │   ├── ProjectFileIndex.cs         # @メンション用のファイルパスインデックス
 │   ├── TextFileEditor.cs           # エクスプローラーのアプリ内テキスト読み書き
-│   ├── RecycleBin.cs               # Windows ごみ箱経由の安全な削除
+│   ├── RecycleBin.cs               # Windows のごみ箱／macOS のゴミ箱経由の安全な削除
 │   ├── ShellIconProvider.cs        # Windows のシェルアイコンをキャッシュして Avalonia 画像に
 │   ├── MarkdownParser.cs           # 軽量 Markdown レンダラー
 │   ├── DiagramCache.cs             # Excalidraw 図のプロジェクト単位の永続化
-│   ├── NotificationService.cs      # トレイ通知と効果音
+│   ├── NotificationService.cs      # トレイ通知と効果音（macOS は通知センター）
 │   ├── UpdateService.cs            # GitHub リリースの確認・ダウンロード・配置
 │   ├── CommitMessageService.cs     # AI によるコミットメッセージ生成（EN/JP）
 │   ├── SecretScanService.cs        # ステージ済み差分のファイル単位シークレットスキャン
@@ -593,20 +628,28 @@ Snipyard/
 │                                   # git プロセスラッパー、書き込み操作、status/log 読み取り、パス復号、グラフレイアウト
 ├── Help/                           # 埋め込みの日英ヘルプページとスクリーンショット
 ├── icon.ico / icon.png             # アプリケーションアイコン
-├── app.manifest                    # アプリケーションマニフェスト
-├── publish.bat                     # 自己完結型リリースビルドのワンクリック発行
+├── app.manifest                    # アプリケーションマニフェスト（Windows）
+├── publish.bat                     # Windows 用の自己完結型リリースビルドのワンクリック発行
+├── publish-mac.ps1                 # macOS 用 Snipyard.app の tar.gz（arm64 / x64）。Windows で publish.bat の後に実行
+├── run-mac.command                 # macOS の Finder からダブルクリックでビルド・実行
 └── build.number                    # 自動インクリメントされるビルド番号
 ```
 
 ## 動作要件
 
-- Windows 10 以降
+- Windows 10 以降、または macOS 11 (Big Sur) 以降（Apple Silicon / Intel）
 - Node.js - 対応 CLI はいずれも npm パッケージ
 - AI CLI をいずれか1つ以上: [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（既定）、Codex CLI、GitHub Copilot CLI、Antigravity CLI、Grok CLI
 - `git`（任意）- ソースコントロールパネル、コミットグラフ、worktree 分離に必要
 - `gh`（任意）- プルリクエスト、CI 状態、リポジトリ作成に必要
-- Microsoft Edge WebView2 ランタイム（任意。Windows 11 には標準搭載）- チャットビューのブラウザプレビューに必要
-- WSL または OpenSSH クライアント（任意）- WSL / SSH セッションに必要
+- Microsoft Edge WebView2 ランタイム（任意。Windows のみ。Windows 11 には標準搭載）- チャットビューのブラウザプレビューに必要
+- WSL（任意。Windows のみ）または OpenSSH クライアント - WSL / SSH セッションに必要
+
+## macOS へのインストール
+
+リリースページから `Snipyard-macos-arm64.tar.gz`（Apple Silicon）または `Snipyard-macos-x64.tar.gz`（Intel）をダウンロードして展開し、`Snipyard.app` をアプリケーションフォルダへ移動してください。署名・公証をしていないため、初回起動は macOS にブロックされます。システム設定 > プライバシーとセキュリティで許可するか、`xattr -dr com.apple.quarantine /Applications/Snipyard.app` を実行してください。以降の更新はアプリ内のアップデートで行えます。
+
+CLI はログインシェル経由で起動するため、npm・Homebrew・ネイティブインストーラーのどれで入れた `claude` でも、シェルのプロファイルで `PATH` が通っていれば見つかります。
 
 ## ビルド
 
@@ -619,9 +662,16 @@ dotnet run
 
 # 単一ファイル実行可能ファイルを発行（publish.bat でも可）
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o ./publish-single
+
+# macOS 用 Snipyard.app の tar.gz を arm64 / x64 で同じバージョンで発行（Windows で上の発行の後に実行）
+powershell -NoProfile -ExecutionPolicy Bypass -File ./publish-mac.ps1
 ```
 
+Mac では .NET SDK（8.0 以降）をインストールして `dotnet run` を実行するか、Finder で `run-mac.command` をダブルクリックしてください（SDK が `~/.dotnet` にある前提です）。
+
 ## データ保存先
+
+macOS では `%APPDATA%\Snipyard` と `%LOCALAPPDATA%\Snipyard` はどちらも `~/Library/Application Support/Snipyard/` になります。`~/.claude` 以下のパスは Windows と同じです。
 
 | データ | パス |
 |---|---|
