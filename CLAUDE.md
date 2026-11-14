@@ -20,9 +20,6 @@ No test framework is configured. Verify changes by building successfully (`dotne
 
 ## Release Process
 
-> **Release handoff:** a release is half done. Read `RELEASE-HANDOFF.md` and finish it
-> before starting any other release work.
-
 Whenever a GitHub Release is made (tag `vX.Y.Z`), it MUST carry the published
 single-file `Snipyard.exe` as an asset, plus the macOS bundles
 `Snipyard-macos-arm64.tar.gz` and `Snipyard-macos-x64.tar.gz` (the macOS
