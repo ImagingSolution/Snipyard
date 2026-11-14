@@ -6,6 +6,26 @@ An MDI (Multiple Document Interface) terminal application for AI coding CLIs on 
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is the default, and Codex CLI, GitHub Copilot CLI, Antigravity CLI and Grok CLI can be picked per session. Run several sessions side by side in one window - or dragged out into windows of their own - each viewable as a raw terminal or as a desktop-app-style Chat View, with a project explorer, a git/GitHub panel, snippets, cost and usage readouts, and a dark/light theme.
 
+## Installation
+
+You also need an AI CLI such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed; see [Requirements](#requirements). Once installed, Snipyard keeps itself up to date through its in-app updater.
+
+### Windows
+
+Download `Snipyard.exe` from the [latest release](https://github.com/ImagingSolution/Snipyard/releases/latest) and run it. It is a single self-contained executable: there is no installer and no .NET to install, so put it in any folder you like. If SmartScreen says "Windows protected your PC", choose **More info** > **Run anyway**.
+
+### macOS
+
+Run this one command in Terminal. It downloads the latest release for your Mac (Apple Silicon or Intel) and puts `Snipyard.app` in Applications; running it again replaces an existing copy. A file fetched this way is not marked as downloaded, so it opens without the Gatekeeper warning.
+
+```bash
+curl -fsSL "https://github.com/ImagingSolution/Snipyard/releases/latest/download/Snipyard-macos-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64).tar.gz" | tar -xz -C /Applications
+```
+
+Or download `Snipyard-macos-arm64.tar.gz` (Apple Silicon) or `Snipyard-macos-x64.tar.gz` (Intel) from the [latest release](https://github.com/ImagingSolution/Snipyard/releases/latest), double-click it to extract, and move `Snipyard.app` to Applications. The app is not notarized by Apple, so a copy downloaded with a browser is blocked on first launch ("Apple could not verify..."): press **Done**, then choose **Open Anyway** under System Settings > Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/Snipyard.app`.
+
+The CLI is started through your login shell, so a `claude` installed with npm, Homebrew or the native installer is found as long as your shell profile puts it on `PATH`.
+
 ![MDI Windows](screenshots/mdi-windows.png)
 
 ![Explorer](screenshots/explorer.png)
@@ -121,7 +141,7 @@ An MDI (Multiple Document Interface) terminal application for AI coding CLIs on 
 - **Keyboard Shortcut Sheet (F1)** - Every shortcut on one screen, grouped by what it acts on
 - **Built-in Help** - The "?" button opens illustrated English/Japanese help pages in the browser, including a comparison with Claude Desktop, the Claude Code CLI and the VS Code extension
 - **Settings Panel** - Grouped into categories: language, font family and size, host shell, initial prompt, theme, notifications, checkpoints, live status, commit message language, plan, launch model and effort, AI provider executable and argument templates, and a shortcut to the `.claude` folder
-- **Self-Update** - Checks the project's GitHub releases for a newer version, downloads it next to the running executable and verifies it before committing to anything, then steps the old executable aside by renaming it and restarts into the new one - undoing the rename if the swap fails, so there is no state with the application removed but not put back. On macOS it takes the release tarball for its architecture, replaces the executable inside `Snipyard.app` and relaunches the bundle. Only the published build can replace itself; a development build points at the releases page instead
+- **Self-Update** - Checks the project's GitHub releases for a newer version, downloads it next to the running executable and verifies it before committing to anything, then steps the old executable aside by renaming it and restarts into the new one - undoing the rename if the swap fails, so there is no state with the application removed but not put back. On macOS it takes the release tarball for its architecture, refreshes the executable, Info.plist, icon and code signature inside `Snipyard.app` and relaunches the bundle. Only the published build can replace itself; a development build points at the releases page instead
 
 ### Everything else
 
@@ -294,18 +314,6 @@ Snipyard/
 - Microsoft Edge WebView2 Runtime (optional, Windows only, preinstalled on Windows 11) - for the Chat View browser preview
 - WSL (optional, Windows only) or an OpenSSH client - for WSL / SSH sessions
 
-## Installing on macOS
-
-The quickest way is one command in Terminal. It downloads the latest release for your Mac (Apple Silicon or Intel) and puts `Snipyard.app` in Applications. A file fetched this way is not marked as downloaded, so it opens without the Gatekeeper warning; running it again replaces an existing copy.
-
-```bash
-curl -fsSL "https://github.com/ImagingSolution/Snipyard/releases/latest/download/Snipyard-macos-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64).tar.gz" | tar -xz -C /Applications
-```
-
-Or download `Snipyard-macos-arm64.tar.gz` (Apple Silicon) or `Snipyard-macos-x64.tar.gz` (Intel) from the releases page, extract it and move `Snipyard.app` to Applications. The app is not notarized by Apple, so a copy downloaded with a browser is blocked on first launch ("Apple could not verify..."): allow it under System Settings > Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/Snipyard.app`. Later updates come through the in-app updater.
-
-The CLI is started through your login shell, so a `claude` installed with npm, Homebrew or the native installer is found as long as your shell profile puts it on `PATH`.
-
 ## Build
 
 ```bash
@@ -370,6 +378,26 @@ MIT
 Avalonia UI で構築された、Windows と macOS で動く AI コーディング CLI 用の MDI（マルチドキュメントインターフェース）ターミナルアプリケーションです。
 
 既定は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) で、Codex CLI・GitHub Copilot CLI・Antigravity CLI・Grok CLI をセッションごとに選択できます。複数のセッションを1つのウィンドウに並べて（あるいは別ウィンドウに切り離して）実行でき、各セッションは生のターミナルとデスクトップアプリ風のチャットビューを切り替えて表示できます。プロジェクトエクスプローラー、git / GitHub パネル、スニペット、コストと使用量の表示、ダーク/ライトテーマを備えています。
+
+## インストール
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) などの AI CLI も別途インストールしておく必要があります（[動作要件](#動作要件) を参照）。インストール後の更新は、アプリ内のアップデートで行えます。
+
+### Windows
+
+[最新リリース](https://github.com/ImagingSolution/Snipyard/releases/latest) から `Snipyard.exe` をダウンロードして実行してください。.NET などの追加インストールが不要な単一の実行ファイルで、インストーラーもないので、好きなフォルダに置いて使えます。SmartScreen で「Windows によって PC が保護されました」と表示された場合は、**詳細情報** > **実行** を選んでください。
+
+### macOS
+
+ターミナルで次のコマンドを1行実行してください。お使いの Mac（Apple Silicon / Intel）に合った最新リリースをダウンロードし、`Snipyard.app` をアプリケーションフォルダに置きます。もう一度実行すると、既存のアプリを上書きします。この方法で取得したファイルにはダウンロードの印が付かないため、Gatekeeper の警告なしで起動できます。
+
+```bash
+curl -fsSL "https://github.com/ImagingSolution/Snipyard/releases/latest/download/Snipyard-macos-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64).tar.gz" | tar -xz -C /Applications
+```
+
+ブラウザで入手する場合は、[最新リリース](https://github.com/ImagingSolution/Snipyard/releases/latest) から `Snipyard-macos-arm64.tar.gz`（Apple Silicon）または `Snipyard-macos-x64.tar.gz`（Intel）をダウンロードし、ダブルクリックで展開して `Snipyard.app` をアプリケーションフォルダへ移動してください。Apple の公証を受けていないため、ブラウザでダウンロードしたものは初回起動時に「Apple は…検証できませんでした」と表示されてブロックされます。**完了** を押してから、システム設定 > プライバシーとセキュリティで **このまま開く** を選ぶか、`xattr -dr com.apple.quarantine /Applications/Snipyard.app` を実行してください。
+
+CLI はログインシェル経由で起動するため、npm・Homebrew・ネイティブインストーラーのどれで入れた `claude` でも、シェルのプロファイルで `PATH` が通っていれば見つかります。
 
 ## 機能
 
@@ -480,7 +508,7 @@ Avalonia UI で構築された、Windows と macOS で動く AI コーディン�
 - **ショートカット一覧 (F1)** - 全ショートカットを対象ごとにグループ分けして1画面で表示
 - **ヘルプ** - 「?」ボタンで、スクリーンショット付きの日英ヘルプページをブラウザで開く。Claude Desktop・Claude Code CLI・VS Code 拡張との比較も収録
 - **設定パネル** - カテゴリごとにグループ分け。言語、フォントとサイズ、ホストシェル、初期プロンプト、テーマ、通知、チェックポイント、ライブステータス、コミットメッセージ言語、プラン、起動時のモデルと effort、AI プロバイダーの実行ファイルと引数テンプレート、`.claude` フォルダへのショートカット
-- **自動アップデート** - GitHub リリースを確認し、新しいバージョンがあれば実行中の exe の隣にダウンロードして検証したうえで適用。古い exe はリネームで退避してから新しい exe を配置し、失敗した場合はリネームを戻すため「アプリが消えたまま」の状態にはならない。macOS ではアーキテクチャに合ったリリースの tar.gz を取得し、`Snipyard.app` 内の実行ファイルを置き換えてアプリを再起動する。自己置換できるのは発行済みのビルドのみで、開発ビルドはリリースページを案内する
+- **自動アップデート** - GitHub リリースを確認し、新しいバージョンがあれば実行中の exe の隣にダウンロードして検証したうえで適用。古い exe はリネームで退避してから新しい exe を配置し、失敗した場合はリネームを戻すため「アプリが消えたまま」の状態にはならない。macOS ではアーキテクチャに合ったリリースの tar.gz を取得し、`Snipyard.app` 内の実行ファイル・Info.plist・アイコン・署名を置き換えてアプリを再起動する。自己置換できるのは発行済みのビルドのみで、開発ビルドはリリースページを案内する
 
 ### その他
 
@@ -652,18 +680,6 @@ Snipyard/
 - `gh`（任意）- プルリクエスト、CI 状態、リポジトリ作成に必要
 - Microsoft Edge WebView2 ランタイム（任意。Windows のみ。Windows 11 には標準搭載）- チャットビューのブラウザプレビューに必要
 - WSL（任意。Windows のみ）または OpenSSH クライアント - WSL / SSH セッションに必要
-
-## macOS へのインストール
-
-いちばん簡単なのは、ターミナルで次のコマンドを1行実行する方法です。お使いの Mac（Apple Silicon / Intel）に合った最新リリースをダウンロードし、`Snipyard.app` をアプリケーションフォルダに置きます。この方法で取得したファイルにはダウンロードの印が付かないため、Gatekeeper の警告なしで起動できます。もう一度実行すると、既存のアプリを上書きします。
-
-```bash
-curl -fsSL "https://github.com/ImagingSolution/Snipyard/releases/latest/download/Snipyard-macos-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64).tar.gz" | tar -xz -C /Applications
-```
-
-ブラウザで入手する場合は、リリースページから `Snipyard-macos-arm64.tar.gz`（Apple Silicon）または `Snipyard-macos-x64.tar.gz`（Intel）をダウンロードして展開し、`Snipyard.app` をアプリケーションフォルダへ移動してください。Apple の公証を受けていないため、ブラウザでダウンロードしたものは初回起動時に「Apple は…検証できませんでした」と表示されてブロックされます。システム設定 > プライバシーとセキュリティで許可するか、`xattr -dr com.apple.quarantine /Applications/Snipyard.app` を実行してください。以降の更新はアプリ内のアップデートで行えます。
-
-CLI はログインシェル経由で起動するため、npm・Homebrew・ネイティブインストーラーのどれで入れた `claude` でも、シェルのプロファイルで `PATH` が通っていれば見つかります。
 
 ## ビルド
 
