@@ -296,7 +296,13 @@ Snipyard/
 
 ## Installing on macOS
 
-Download `Snipyard-macos-arm64.tar.gz` (Apple Silicon) or `Snipyard-macos-x64.tar.gz` (Intel) from the releases page, extract it and move `Snipyard.app` to Applications. The app is not signed or notarized, so macOS blocks the first launch: allow it under System Settings > Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/Snipyard.app`. Later updates come through the in-app updater.
+The quickest way is one command in Terminal. It downloads the latest release for your Mac (Apple Silicon or Intel) and puts `Snipyard.app` in Applications. A file fetched this way is not marked as downloaded, so it opens without the Gatekeeper warning; running it again replaces an existing copy.
+
+```bash
+curl -fsSL "https://github.com/ImagingSolution/Snipyard/releases/latest/download/Snipyard-macos-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64).tar.gz" | tar -xz -C /Applications
+```
+
+Or download `Snipyard-macos-arm64.tar.gz` (Apple Silicon) or `Snipyard-macos-x64.tar.gz` (Intel) from the releases page, extract it and move `Snipyard.app` to Applications. The app is not notarized by Apple, so a copy downloaded with a browser is blocked on first launch ("Apple could not verify..."): allow it under System Settings > Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/Snipyard.app`. Later updates come through the in-app updater.
 
 The CLI is started through your login shell, so a `claude` installed with npm, Homebrew or the native installer is found as long as your shell profile puts it on `PATH`.
 
@@ -649,7 +655,13 @@ Snipyard/
 
 ## macOS へのインストール
 
-リリースページから `Snipyard-macos-arm64.tar.gz`（Apple Silicon）または `Snipyard-macos-x64.tar.gz`（Intel）をダウンロードして展開し、`Snipyard.app` をアプリケーションフォルダへ移動してください。署名・公証をしていないため、初回起動は macOS にブロックされます。システム設定 > プライバシーとセキュリティで許可するか、`xattr -dr com.apple.quarantine /Applications/Snipyard.app` を実行してください。以降の更新はアプリ内のアップデートで行えます。
+いちばん簡単なのは、ターミナルで次のコマンドを1行実行する方法です。お使いの Mac（Apple Silicon / Intel）に合った最新リリースをダウンロードし、`Snipyard.app` をアプリケーションフォルダに置きます。この方法で取得したファイルにはダウンロードの印が付かないため、Gatekeeper の警告なしで起動できます。もう一度実行すると、既存のアプリを上書きします。
+
+```bash
+curl -fsSL "https://github.com/ImagingSolution/Snipyard/releases/latest/download/Snipyard-macos-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64).tar.gz" | tar -xz -C /Applications
+```
+
+ブラウザで入手する場合は、リリースページから `Snipyard-macos-arm64.tar.gz`（Apple Silicon）または `Snipyard-macos-x64.tar.gz`（Intel）をダウンロードして展開し、`Snipyard.app` をアプリケーションフォルダへ移動してください。Apple の公証を受けていないため、ブラウザでダウンロードしたものは初回起動時に「Apple は…検証できませんでした」と表示されてブロックされます。システム設定 > プライバシーとセキュリティで許可するか、`xattr -dr com.apple.quarantine /Applications/Snipyard.app` を実行してください。以降の更新はアプリ内のアップデートで行えます。
 
 CLI はログインシェル経由で起動するため、npm・Homebrew・ネイティブインストーラーのどれで入れた `claude` でも、シェルのプロファイルで `PATH` が通っていれば見つかります。
 
