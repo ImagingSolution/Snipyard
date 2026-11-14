@@ -1,7 +1,9 @@
 # Publishes the macOS builds as Snipyard.app bundles, one tarball per architecture:
 #   publish-mac\Snipyard-macos-arm64.tar.gz   (Apple Silicon)
 #   publish-mac\Snipyard-macos-x64.tar.gz     (Intel)
-# These are the release assets the macOS updater looks for (UpdateService.MacAssetName).
+# NOT for release: Windows has no codesign, so the bundle is left unsigned and a downloaded
+# copy is reported as "damaged" on macOS. Release tarballs come from publish-mac.sh on a Mac;
+# this script only checks that the macOS builds compile and package.
 #
 # Run it right after the Windows publish: every publish bumps build.number, so this script
 # rewinds the counter before each architecture and all three builds carry the same version.

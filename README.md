@@ -278,7 +278,8 @@ Snipyard/
 ├── icon.ico / icon.png             # Application icon
 ├── app.manifest                    # Application manifest (Windows)
 ├── publish.bat                     # One-click self-contained Windows release build
-├── publish-mac.ps1                 # macOS Snipyard.app tarballs (arm64 / x64), run on Windows after publish.bat
+├── publish-mac.sh                  # macOS Snipyard.app tarballs (arm64 / x64), signed; run on a Mac
+├── publish-mac.ps1                 # Windows-side check that the macOS builds compile and package (unsigned)
 ├── run-mac.command                 # Double-click in Finder to build and run on macOS
 └── build.number                    # Auto-incrementing build number
 ```
@@ -311,8 +312,8 @@ dotnet run
 # Publish single-file executable (or just run publish.bat)
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o ./publish-single
 
-# macOS Snipyard.app tarballs for arm64 and x64, same version (run on Windows after the publish above)
-powershell -NoProfile -ExecutionPolicy Bypass -File ./publish-mac.ps1
+# macOS Snipyard.app tarballs for arm64 and x64, ad-hoc signed (run on a Mac)
+./publish-mac.sh
 ```
 
 On a Mac, install the .NET SDK (8.0 or later) and run `dotnet run`, or double-click `run-mac.command` in Finder, which expects the SDK in `~/.dotnet`.
@@ -630,7 +631,8 @@ Snipyard/
 ├── icon.ico / icon.png             # アプリケーションアイコン
 ├── app.manifest                    # アプリケーションマニフェスト（Windows）
 ├── publish.bat                     # Windows 用の自己完結型リリースビルドのワンクリック発行
-├── publish-mac.ps1                 # macOS 用 Snipyard.app の tar.gz（arm64 / x64）。Windows で publish.bat の後に実行
+├── publish-mac.sh                  # macOS 用 Snipyard.app の tar.gz（arm64 / x64）。署名付き。Mac で実行
+├── publish-mac.ps1                 # macOS ビルドがコンパイル・パッケージできるかの Windows 側での確認（署名なし）
 ├── run-mac.command                 # macOS の Finder からダブルクリックでビルド・実行
 └── build.number                    # 自動インクリメントされるビルド番号
 ```
@@ -663,8 +665,8 @@ dotnet run
 # 単一ファイル実行可能ファイルを発行（publish.bat でも可）
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o ./publish-single
 
-# macOS 用 Snipyard.app の tar.gz を arm64 / x64 で同じバージョンで発行（Windows で上の発行の後に実行）
-powershell -NoProfile -ExecutionPolicy Bypass -File ./publish-mac.ps1
+# macOS 用 Snipyard.app の tar.gz を arm64 / x64 で発行（アドホック署名付き。Mac で実行）
+./publish-mac.sh
 ```
 
 Mac では .NET SDK（8.0 以降）をインストールして `dotnet run` を実行するか、Finder で `run-mac.command` をダブルクリックしてください（SDK が `~/.dotnet` にある前提です）。

@@ -36,31 +36,51 @@ request): releases carry `Snipyard.exe` only. Pre-rename installs no longer
 see new updates. The current updater still accepts `Claucraft.exe`, but do not
 upload one.
 
-Steps, every time:
+Each half has to be built on its own OS:
+
+- `Snipyard.exe` on **Windows**. Cross-built on a Mac it lacks the icon and the
+  `FileVersion` resource.
+- The macOS tarballs on a **Mac**, with `./publish-mac.sh`. The `.app` bundle
+  has to be ad-hoc signed as a whole (`codesign`, macOS only); a bundle where
+  only the executable is signed is reported as "damaged" once downloaded and
+  cannot be opened at all. `publish-mac.ps1` (Windows) produces exactly that, so
+  never upload its output. v1.0.459 first shipped such tarballs and had them
+  replaced.
+
+Steps, every time (Windows first, then the Mac):
 
 ```bash
+# --- Windows ---
 git commit ...                      # build.number bumps on the next build
 dotnet publish -c Release -r win-x64 --self-contained true \
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
     -p:DebugType=none -o ./publish-single     # (or run publish.bat)
-powershell -NoProfile -ExecutionPolicy Bypass -File ./publish-mac.ps1
-                                    # macOS .app tarballs, same version (rewinds the counter)
-git add build.number && git commit -m "..."   # commit the bumped counter
+git add build.number && git commit -m "Bump build number to X.Y.Z"
 git push
-gh release create vX.Y.Z ./publish-single/Snipyard.exe \
-    ./publish-mac/Snipyard-macos-arm64.tar.gz ./publish-mac/Snipyard-macos-x64.tar.gz \
-    --title vX.Y.Z --notes "..."
+gh release create vX.Y.Z ./publish-single/Snipyard.exe --draft \
+    --target master --title vX.Y.Z --notes "..."   # draft: not "latest" yet
+
+# --- Mac ---
+git pull
+./publish-mac.sh                    # stamps the version in build.number, signs, packs
+gh release upload vX.Y.Z ./publish-mac/Snipyard-macos-arm64.tar.gz \
+    ./publish-mac/Snipyard-macos-x64.tar.gz
+gh release edit vX.Y.Z --draft=false --latest
 ```
+
+Keep the release a draft until all three assets are on it: a published release
+missing the asset for some platform leaves that platform without updates.
 
 The version in the tag must match the `FileVersion` baked into
 `publish-single/Snipyard.exe` by that publish (check with
-`(Get-Item .\publish-single\Snipyard.exe).VersionInfo.FileVersion`).
+`(Get-Item .\publish-single\Snipyard.exe).VersionInfo.FileVersion`) and the
+`CFBundleVersion` in the tarballs' `Info.plist`.
 
 ## Architecture
 
 MDI terminal app for Claude Code on Windows and macOS, built with .NET 8.0 / Avalonia 12. All UI runs on a single STA thread.
 
-Platform split: `IPseudoConsole.Create()` picks ConPTY (`PseudoConsole`) on Windows and forkpty (`UnixPseudoConsole`) elsewhere; off Windows `ShellHost` emits a POSIX command line that the login shell runs (`$SHELL -l -c`). Windows-only features check `OperatingSystem.IsWindows()`: the WebView2 preview falls back to the system browser, Explorer calls go through `PlatformShell`, notifications use osascript/afplay, and the recycle bin is `~/.Trash`. macOS builds cannot be run on this machine; `publish-mac.ps1` only proves they compile and package.
+Platform split: `IPseudoConsole.Create()` picks ConPTY (`PseudoConsole`) on Windows and forkpty (`UnixPseudoConsole`) elsewhere; off Windows `ShellHost` emits a POSIX command line that the login shell runs (`$SHELL -l -c`). Windows-only features check `OperatingSystem.IsWindows()`: the WebView2 preview falls back to the system browser, Explorer calls go through `PlatformShell`, notifications use osascript/afplay, and the recycle bin is `~/.Trash`. `publish-mac.ps1` on Windows only proves the macOS builds compile and package; release tarballs come from `publish-mac.sh` on a Mac.
 
 ### Terminal Pipeline
 

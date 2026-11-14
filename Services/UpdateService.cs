@@ -53,6 +53,16 @@ public static class UpdateService
     /// <summary>Where the executable sits inside the bundle, as the tarball spells it.</summary>
     private const string MacBinaryEntry = "Snipyard.app/Contents/MacOS/Snipyard";
 
+    private const string MacBundlePrefix = "Snipyard.app/";
+
+    /// <summary>
+    /// The rest of the downloaded bundle (Info.plist, the icon, the code signature) is staged here,
+    /// beside the staged executable, and copied over the installed bundle with it. The executable's
+    /// signature seals those files, so replacing the executable alone would leave a bundle whose
+    /// signature no longer matches its contents.
+    /// </summary>
+    private static string BundleStage(string stage) => stage + ".bundle";
+
     /// <summary>
     /// The asset's name before the app was renamed from Claucraft. Releases made during the
     /// transition carry both, so builds from before the rename can still find their update;
@@ -294,7 +304,7 @@ public static class UpdateService
 
             if (info.Size > 0 && new FileInfo(download).Length != info.Size)
                 throw new IOException($"Downloaded {new FileInfo(download).Length} bytes, expected {info.Size}.");
-            ExtractMacBinary(download, stage);
+            ExtractMacBundle(download, stage, BundleStage(stage));
             TryDelete(download);
             VerifyMachO(stage);
             return stage;
@@ -303,6 +313,7 @@ public static class UpdateService
         {
             TryDelete(stage);
             TryDelete(stage + ".tar.gz");
+            TryDeleteDirectory(BundleStage(stage));
             throw;
         }
     }
@@ -324,19 +335,71 @@ public static class UpdateService
             throw new IOException("The download is not a Windows executable.");
     }
 
-    private static void ExtractMacBinary(string archive, string target)
+    /// <summary>
+    /// Writes the bundle's executable to <paramref name="target"/> and every other file of the
+    /// bundle under <paramref name="bundleDir"/>, keeping its path below Snipyard.app.
+    /// </summary>
+    private static void ExtractMacBundle(string archive, string target, string bundleDir)
     {
+        TryDeleteDirectory(bundleDir);
+        var root = Path.GetFullPath(bundleDir) + Path.DirectorySeparatorChar;
+        bool found = false;
+
         using var file = File.OpenRead(archive);
         using var gzip = new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Decompress);
         using var tar = new System.Formats.Tar.TarReader(gzip);
         while (tar.GetNextEntry() is { } entry)
         {
-            if (entry.Name.TrimStart('.', '/') != MacBinaryEntry || entry.DataStream == null) continue;
-            using var output = File.Create(target);
-            entry.DataStream.CopyTo(output);
-            return;
+            if (entry.DataStream == null) continue;
+            var name = entry.Name.TrimStart('.', '/');
+            if (name == MacBinaryEntry)
+            {
+                using var output = File.Create(target);
+                entry.DataStream.CopyTo(output);
+                found = true;
+                continue;
+            }
+            if (!name.StartsWith(MacBundlePrefix, StringComparison.Ordinal)) continue;
+
+            // Refuse anything that would land outside the staging folder ("../").
+            var path = Path.GetFullPath(Path.Combine(bundleDir, name[MacBundlePrefix.Length..]));
+            if (!path.StartsWith(root, StringComparison.Ordinal)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            using var extra = File.Create(path);
+            entry.DataStream.CopyTo(extra);
         }
-        throw new IOException("The download does not contain " + MacBinaryEntry + ".");
+        if (!found) throw new IOException("The download does not contain " + MacBinaryEntry + ".");
+    }
+
+    /// <summary>
+    /// Copies the staged bundle files over the installed bundle and drops the renamed old
+    /// executable, which would otherwise sit unsealed inside Contents/MacOS. Best effort: the new
+    /// executable is already in place and starts either way.
+    /// </summary>
+    private static void ApplyBundleFiles(string stagedPath, string exe, string old)
+    {
+        var staged = BundleStage(stagedPath);
+        var bundle = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(exe)!, "..", ".."));
+        try
+        {
+            if (Directory.Exists(staged) && bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var src in Directory.EnumerateFiles(staged, "*", SearchOption.AllDirectories))
+                {
+                    var dest = Path.Combine(bundle, Path.GetRelativePath(staged, src));
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    File.Copy(src, dest, overwrite: true);
+                }
+            }
+        }
+        catch
+        {
+            // A bundle we cannot write into still runs the new executable.
+        }
+        TryDeleteDirectory(staged);
+
+        // Unix lets a running image be unlinked; the process keeps its mapping.
+        TryDelete(old);
     }
 
     /// <summary>64-bit Mach-O starts with 0xFEEDFACF, stored little-endian on both Mac architectures.</summary>
@@ -381,6 +444,8 @@ public static class UpdateService
 
         if (OperatingSystem.IsMacOS())
         {
+            ApplyBundleFiles(stagedPath, exe, old);
+
             // Relaunch the bundle the way Finder would, so the Dock sees an app and not a bare binary.
             var bundle = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(exe)!, "..", ".."));
             var psi = new ProcessStartInfo("open") { UseShellExecute = false };
@@ -405,7 +470,23 @@ public static class UpdateService
     public static void CleanupOldExe()
     {
         if (ExePath is { } exe) TryDelete(exe + OldSuffix);
-        if (StagePath is { } stage) TryDelete(stage);
+        if (StagePath is { } stage)
+        {
+            TryDelete(stage);
+            TryDeleteDirectory(BundleStage(stage));
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Litter, not a failure.
+        }
     }
 
     private static void TryDelete(string path)
